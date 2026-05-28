@@ -1,0 +1,394 @@
+/* =========================================================
+   ROADSoS — App-Level Styles
+   ========================================================= */
+
+/* View transitions */
+.dashboard-enter {
+  animation: slide-in-left 0.3s ease;
+}
+
+.chat-enter {
+  animation: fade-in 0.3s ease;
+}
+
+.failsafe-enter {
+  animation: fade-in 0.1s ease;
+}
+
+/* Button press effects */
+button:active {
+  transform: scale(0.96);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--action-alert);
+  outline-offset: 2px;
+}
+
+/* SOS button specific press */
+button[aria-label="Activate SOS Emergency"]:active {
+  transform: scale(0.92);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+/* Chip hover for desktop */
+@media (hover: hover) {
+  button[aria-label*="Trauma"],
+  button[aria-label*="Police"],
+  button[aria-label*="Towing"],
+  button[aria-label*="Puncture"] {
+    transition: all 0.2s ease;
+  }
+
+  button[aria-label*="Trauma"]:hover {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  button[aria-label*="Police"]:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: rgba(59, 130, 246, 0.08);
+  }
+
+  button[aria-label*="Towing"]:hover {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  button[aria-label*="Puncture"]:hover {
+    border-color: rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.08);
+  }
+}
+
+/* Cancel button hover */
+button[aria-label="Cancel Emergency"]:hover {
+  background: rgba(0, 0, 0, 0.55) !important;
+  transform: scale(1.02);
+}
+
+/* Input focus */
+input:focus {
+  border-color: var(--action-alert) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
+/* Chat message animations */
+@keyframes message-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+div[style*="alignSelf"] {
+  animation: message-pop 0.25s ease;
+}
+
+/* Skeleton shimmer override for better visibility */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #1e293b 0%,
+    #334155 50%,
+    #1e293b 100%
+  ) !important;
+  background-size: 200px 100% !important;
+  opacity: 1 !important;
+}
+
+/* Voice wave animation refinements */
+@keyframes wave-rise {
+  0%, 100% { height: 4px; }
+  25% { height: 16px; }
+  50% { height: 24px; }
+  75% { height: 10px; }
+}
+
+/* Ensure no scroll overflow */
+#root {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Safe area awareness */
+@supports (padding: max(0px)) {
+  .safe-bottom {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+/* =========================================================
+   Responsive Design — CSS Class Overrides
+   ========================================================= */
+
+/* --- Hero / SOS Area --- */
+@media (min-width: 600px) {
+  .responsive-hero .responsive-radial {
+    width: 280px !important;
+    height: 280px !important;
+  }
+  .responsive-hero .responsive-sos-btn {
+    width: 160px !important;
+    height: 160px !important;
+  }
+  .responsive-hero .responsive-sos-text {
+    font-size: 44px !important;
+  }
+  .responsive-hero .responsive-glow-ring {
+    width: 230px !important;
+    height: 230px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-hero .responsive-radial {
+    width: 320px !important;
+    height: 320px !important;
+  }
+  .responsive-hero .responsive-sos-btn {
+    width: 190px !important;
+    height: 190px !important;
+  }
+  .responsive-hero .responsive-sos-text {
+    font-size: 52px !important;
+  }
+  .responsive-hero .responsive-glow-ring {
+    width: 260px !important;
+    height: 260px !important;
+  }
+}
+
+/* --- Category Chips --- */
+@media (min-width: 600px) {
+  .responsive-chips {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 12px !important;
+    padding: 0 0 16px !important;
+    max-width: 480px !important;
+    margin: 0 auto !important;
+  }
+  .responsive-chip {
+    padding: 14px 8px !important;
+    border-radius: 14px !important;
+  }
+  .responsive-chip-icon {
+    font-size: 24px !important;
+  }
+  .responsive-chip-label {
+    font-size: 11px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-chips {
+    max-width: 560px !important;
+    gap: 14px !important;
+  }
+  .responsive-chip {
+    padding: 16px 10px !important;
+  }
+  .responsive-chip-icon {
+    font-size: 26px !important;
+  }
+  .responsive-chip-label {
+    font-size: 12px !important;
+  }
+}
+
+/* --- Chat Trigger --- */
+@media (min-width: 600px) {
+  .responsive-chat-trigger {
+    max-width: 480px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding: 14px 18px !important;
+  }
+  .responsive-chat-trigger-text {
+    font-size: 14px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-chat-trigger {
+    max-width: 560px !important;
+  }
+}
+
+/* --- Medical Card --- */
+@media (min-width: 600px) {
+  .responsive-medical-card,
+  .responsive-medical-card-inner {
+    max-width: 480px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-medical-card,
+  .responsive-medical-card-inner {
+    max-width: 560px !important;
+  }
+}
+
+/* --- Header (logo + badge) --- */
+@media (min-width: 600px) {
+  .responsive-header {
+    padding: 20px 0 12px !important;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px)) !important;
+    max-width: 560px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+  }
+  .responsive-logo {
+    font-size: 22px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-header {
+    max-width: 640px !important;
+  }
+  .responsive-logo {
+    font-size: 24px !important;
+  }
+}
+
+/* --- Failsafe Countdown --- */
+@media (min-width: 600px) {
+  .responsive-countdown-number {
+    font-size: 150px !important;
+  }
+  .responsive-countdown-label {
+    font-size: 16px !important;
+  }
+  .responsive-cancel-text {
+    font-size: 26px !important;
+  }
+  .responsive-medical-label {
+    font-size: 14px !important;
+  }
+  .responsive-medical-value {
+    font-size: 18px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-countdown-number {
+    font-size: 180px !important;
+  }
+  .responsive-countdown-label {
+    font-size: 18px !important;
+  }
+  .responsive-cancel-text {
+    font-size: 28px !important;
+  }
+}
+
+/* --- Chat Canvas --- */
+@media (min-width: 600px) {
+  .responsive-chat-bubble {
+    max-width: 70% !important;
+    padding: 16px 22px !important;
+  }
+  .responsive-chat-text {
+    font-size: 15px !important;
+  }
+  .responsive-chat-input {
+    max-width: 600px !important;
+    margin: 0 auto !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-chat-bubble {
+    max-width: 65% !important;
+    padding: 18px 24px !important;
+  }
+  .responsive-chat-text {
+    font-size: 16px !important;
+  }
+  .responsive-chat-input {
+    max-width: 720px !important;
+  }
+}
+
+/* --- Map View --- */
+@media (min-width: 600px) {
+  .responsive-map-header {
+    padding: 16px 24px !important;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+  }
+  .responsive-map-title {
+    font-size: 18px !important;
+  }
+  .responsive-location-cards {
+    max-height: 35% !important;
+    padding: 16px 24px !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-location-cards {
+    max-height: 30% !important;
+    max-width: 720px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+  }
+  .responsive-map-container {
+    max-width: 720px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+  }
+}
+
+/* --- Bottom Nav --- */
+@media (min-width: 600px) {
+  .responsive-nav-btn {
+    padding: 8px 24px !important;
+    min-width: 80px !important;
+  }
+  .responsive-nav-icon {
+    font-size: 22px !important;
+  }
+  .responsive-nav-label {
+    font-size: 11px !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-nav-btn {
+    padding: 10px 32px !important;
+    min-width: 96px !important;
+  }
+  .responsive-nav-icon {
+    font-size: 24px !important;
+  }
+  .responsive-nav-label {
+    font-size: 12px !important;
+  }
+}
+
+/* --- Status Row / Crash Detect Banner --- */
+@media (min-width: 600px) {
+  .responsive-status-label {
+    font-size: 13px !important;
+  }
+  .responsive-crash-banner {
+    max-width: 480px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-crash-banner {
+    max-width: 560px !important;
+  }
+}
