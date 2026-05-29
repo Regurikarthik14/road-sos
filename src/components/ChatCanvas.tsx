@@ -3,13 +3,6 @@ import type { ChatMessage } from '../types';
 import { useVoice } from '../hooks/useVoice';
 import { useGemini } from '../hooks/useGemini';
 
-const WELCOME_MESSAGE: ChatMessage = {
-  id: 'welcome',
-  text: '🛡️ Raksha AI Assistant active.\n\n• Say "Help Raksha" for voice mode\n• Type your emergency below\n• I can dispatch: Trauma, Police, Towing, Puncture\n• Fire & hardware monitoring active',
-  isUser: false,
-  timestamp: Date.now(),
-};
-
 const NETWORK_STATES = {
   cloud: { label: 'Cloud Connected (Deep AI)', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
   edge: { label: 'Edge AI Active (Zero-Byte Mode)', color: '#FCD34D', bg: 'rgba(252,211,77,0.12)' },
@@ -103,13 +96,22 @@ function formatDateLabel(ts: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Multiple fallback responses so users don't see the same message every time
+const FALLBACK_RESPONSES = [
+  'I\'m here to help with emergencies and road safety! Try saying:\n\n• "emergency" or "help" — for urgent assistance\n• "police" or "trauma" — nearby emergency services\n• "fire" or "temperature" — environmental monitoring\n• "towing" or "puncture" — roadside assistance\n• "where am I" or "location" — GPS tracking info',
+  'Need assistance? I can help with several things:\n\n🚨 **Emergency**: SOS, Police, Trauma centers\n🔧 **Roadside**: Towing, Puncture repair\n🌡️ **Monitoring**: Fire detection, Temperature\n💬 **Chat**: Just speak naturally!\n\nWhat would you like help with?',
+  'Hi there! I\'m Raksha, your emergency response assistant.\n\nSome things you can ask me:\n• "Find nearby police station"\n• "Show trauma centers"\n• "Call for towing"\n• "Check fire risk"\n• "Help! I\'m in an accident"\n\nHow can I assist you today?',
+  '🛡️ Raksha is here. Available services:\n\n📍 Live GPS tracking & emergency dispatch\n🔥 Real-time temperature & fire monitoring\n⚙️ Hardware health checks (CPU, battery, sensors)\n🚑 Crash detection with auto-SOS\n🎤 Voice-controlled interface\n\nJust tell me what you need!',
+];
+
 interface ChatCanvasProps {
   theme: string;
   onToggleTheme: () => void;
+  onBack?: () => void;
 }
 
-export default function ChatCanvas({ theme, onToggleTheme }: ChatCanvasProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+export default function ChatCanvas({ theme, onToggleTheme, onBack }: ChatCanvasProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [networkState, setNetworkState] = useState<'cloud' | 'edge'>(
     navigator.onLine ? 'cloud' : 'edge'
@@ -120,6 +122,7 @@ export default function ChatCanvas({ theme, onToggleTheme }: ChatCanvasProps) {
   const [apiKeyInputValue, setApiKeyInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const fallbackIndexRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -160,39 +163,169 @@ export default function ChatCanvas({ theme, onToggleTheme }: ChatCanvasProps) {
     };
   }, []);
 
-  // Find best matching response
-  const findResponse = (text: string): { response: string; speak?: boolean } => {
-    const lower = text.toLowerCase();
+  // Pick next fallback response in round-robin fashion
+  const getFallbackResponse = (): string => {
+    const idx = fallbackIndexRef.current % FALLBACK_RESPONSES.length;
+    fallbackIndexRef.current++;
+    return FALLBACK_RESPONSES[idx];
+  };
 
-    // Check all registered keywords
+  // Find best matching response using broader word-level matching and category grouping
+  const findResponse = (text: string): { response: string; speak?: boolean } => {
+    const lower = text.toLowerCase().trim();
+
+    // === EMERGENCY DETECTION (highest priority) ===
+    const emergencyPatterns = [
+      ['accident', 'crash', 'collision', 'wreck'],
+      ['hurt', 'injured', 'bleeding', 'wounded', 'unconscious'],
+      ['on fire', 'burning', 'smoke', 'flames', 'fire emergency', 'fire accident', 'fire alert'],
+      ['help me', 'save me', 'please help', 'emergency', 'sos'],
+      ['heart attack', 'stroke', 'choking', 'drowning'],
+      ['gunshot', 'stabbing', 'attack', 'assault'],
+    ];
+    for (const group of emergencyPatterns) {
+      if (group.some(p => lower.includes(p))) {
+        return {
+          response: '🚨 **EMERGENCY DETECTED**\n\n• **Tap the red SOS button NOW** for immediate dispatch\n• Call **108** (India) or **911** (US) for emergency services\n• Stay where you are — help is on the way\n• I\'m here to guide you until help arrives\n\n_Your location is being tracked and will be shared with emergency responders._',
+          speak: true,
+        };
+      }
+    }
+
+    // === GREETINGS ===
+    const greetingWords = ['hi', 'hello', 'hey', 'namaste', 'vanakkam', 'good morning', 'good evening', 'good afternoon', 'howdy', 'sup', 'yo'];
+    if (greetingWords.some(w => lower === w || lower.startsWith(w + ' ') || lower.includes(' ' + w))) {
+      const greetings = [
+        '👋 Namaste! I\'m **Raksha**, your emergency response assistant.\n\n• Need help? Just say what\'s wrong\n• Say "help" for a list of commands\n• Tap the mic 🎤 to use voice mode\n\nHow can I assist you today?',
+        'Hey there! 👋 Raksha here, ready to help.\n\nI can dispatch emergency services, monitor fire/temperature, check hardware health, and more. What do you need?',
+        'Hello! 🛡️ Raksha protection system active.\n\nI\'m always monitoring for emergencies. Just tell me what you\'re looking for — police, towing, medical help, or just information.',
+      ];
+      return { response: greetings[Math.floor(Math.random() * greetings.length)], speak: true };
+    }
+
+    // === THANKS ===
+    if (['thanks', 'thank you', 'thankyou', 'thx', 'ty'].some(w => lower.includes(w))) {
+      const thanks = [
+        'You\'re welcome! 🛡️ Raksha is always here to keep you safe.\n\nIs there anything else I can help you with?',
+        'Happy to help! Stay safe out there. 😊\n\nLet me know if you need anything else!',
+        'Anytime! That\'s what I\'m here for. 🙌\n\nRemember, you can always tap the SOS button in an emergency.',
+      ];
+      return { response: thanks[Math.floor(Math.random() * thanks.length)], speak: false };
+    }
+
+    // === YES / NO / OK / GOODBYE ===
+    if (['ok', 'okay', 'k', 'alright', 'sure', 'fine', 'got it', 'understood'].some(w => lower === w || lower.startsWith(w + ' ') || lower === w + '.' || lower === w + '!')) {
+      return {
+        response: '👍 Got it! I\'m standing by.\n\nSay "help" anytime if you need assistance, or just tell me what you need.',
+        speak: false,
+      };
+    }
+
+    if (['bye', 'goodbye', 'see you', 'cya', 'take care', 'see ya'].some(w => lower.includes(w))) {
+      return {
+        response: '👋 Stay safe! Raksha will be here whenever you need me.\n\n• SOS button always available for emergencies\n• Monitoring active in the background\n• Take care and drive safe! 🛡️',
+        speak: true,
+      };
+    }
+
+    // Check all registered keywords in RESPONSE_MAP
     for (const [keyword, data] of Object.entries(RESPONSE_MAP)) {
       if (lower.includes(keyword)) {
         return data;
       }
     }
 
-    // Smart fallback
-    const emergencyWords = ['accident', 'crash', 'hurt', 'injured', 'bleeding', 'fire', 'help me'];
-    const isEmergency = emergencyWords.some(w => lower.includes(w));
-
-    if (isEmergency) {
+    // === HOURS / TIMING / AVAILABILITY ===
+    const timeWords = ['open', 'hours', 'timing', '24', '24/7', 'available', 'when', 'time'];
+    if (timeWords.some(w => lower.includes(w))) {
       return {
-        response: '🚨 This sounds like an emergency!\n\n• Tap the SOS button now for immediate dispatch\n• Or call 108 (Emergency Services)\n• Stay where you are — help is on the way\n• I\'m here to guide you until help arrives',
+        response: '🕐 **Emergency services near you:**\n\n• **City General Hospital** — 24/7\n• **Central Police Station** — 24/7\n• **Quick Tow Service** — Open now (until 10 PM)\n• **AutoFix Puncture** — 24/7 mobile service\n\nEmergency services are available around the clock. Tap the relevant chip on the dashboard to view locations on the map.',
+        speak: false,
+      };
+    }
+
+    // === DISTANCE / NEARBY / HOW FAR ===
+    const distanceWords = ['near', 'far', 'distance', 'nearby', 'close', 'away', 'km', 'how far', 'nearest', 'closest'];
+    if (distanceWords.some(w => lower.includes(w))) {
+      return {
+        response: '📍 **Nearby services from your location:**\n\n• 🏥 **City General Hospital** — 2.3 km (Trauma)\n• 👮 **Central Police Station** — 1.3 km\n• 🛻 **Quick Tow** — 0.9 km\n• 🔧 **AutoFix Puncture** — 1.8 km\n\nCheck the map on your dashboard for exact routes and directions.',
+        speak: false,
+      };
+    }
+
+    // === WHO / WHAT / WHY QUESTIONS ===
+    if (/^(who|what|why|how|when|where|which)\b/i.test(lower) && !distanceWords.some(w => lower.includes(w))) {
+      const questionResponses = [
+        '🤔 Good question! Here\'s what I can tell you:\n\nI\'m **Raksha** — an AI emergency response assistant.\n\nI can help with:\n• Dispatching emergency services\n• Monitoring fire and temperature\n• Checking hardware/system health\n• GPS location tracking\n\nWhat specifically would you like to know?',
+        '📖 Let me explain:\n\nRaksha (रक्षा) means "protection" in Sanskrit. I\'m designed to keep you safe on the road by:\n\n• Detecting crashes via your phone\'s sensors\n• Monitoring cabin temperature for fire risk\n• Tracking your hardware health\n• Connecting you to emergency services instantly\n\nIs there a specific feature you\'d like to learn more about?',
+      ];
+      return { response: questionResponses[Math.floor(Math.random() * questionResponses.length)], speak: false };
+    }
+
+    // === ABOUT / CAPABILITIES ===
+    if (['about', 'capabilities', 'features', 'what can you', 'what do you', 'can you', 'function'].some(w => lower.includes(w))) {
+      return {
+        response: '🛡️ **Raksha — Complete Feature Overview**\n\n✅ **Emergency Dispatch** — Police, Trauma, Towing, Puncture\n✅ **Crash Detection** — Auto-detects impacts and sends SOS\n✅ **Fire Monitoring** — Real-time temperature tracking\n✅ **Hardware Health** — CPU, Battery, Sensor monitoring\n✅ **Voice Control** — Speak naturally with voice mode\n✅ **GPS Tracking** — Real-time location sharing\n✅ **Auto-SOS** — 10-second countdown on fall detection\n✅ **Dark/Light Mode** — Choose your theme\n\nAll of this works together to keep you safe. What would you like to try?',
         speak: true,
       };
     }
 
-    const greetingWords = ['hi', 'hello', 'hey', 'namaste', 'vanakkam'];
-    if (greetingWords.some(w => lower.includes(w))) {
+    // === WEATHER / CLIMATE ===
+    if (['weather', 'temperature outside', 'climate', 'hot', 'cold', 'raining', 'rain', 'forecast'].some(w => lower.includes(w))) {
       return {
-        response: '👋 Namaste! I\'m Raksha, your emergency assistant.\n\n• Say "help" for available commands\n• Say "raksha" to know more about me\n• I\'m always listening for emergencies\n• Tap the mic for voice mode',
+        response: '🌡️ **Environmental Monitoring:**\n\nI track the **ambient temperature** inside/around your vehicle in real-time:\n\n• **Normal**: 25-35°C — All clear ✅\n• **Elevated**: 35-50°C — Warning issued ⚠️\n• **Fire Alert**: >50°C — Emergency dispatch 🚨\n\nCheck the **Temperature Monitor** panel on your dashboard for the current reading!\n\n_Note: For outdoor weather forecasts, please check a weather app._',
+        speak: false,
+      };
+    }
+
+    // === PHONE / CALL / CONTACT ===
+    if (['call', 'phone', 'number', 'contact', 'dial', 'reach'].some(w => lower.includes(w))) {
+      return {
+        response: '📞 **Emergency Contact Numbers:**\n\n• **108** — Emergency Services (India)\n• **100** — Police\n• **101** — Fire\n• **102** — Ambulance\n• **112** — All Emergencies (EU/UK)\n• **911** — All Emergencies (US/Canada)\n\nYou can also **tap the SOS button** on your dashboard for immediate dispatch with your GPS location.',
         speak: true,
       };
     }
 
+    // === FEELINGS / MOOD ===
+    if (['how are you', 'how\'s it going', 'you doing', 'what\'s up', 'how do you feel'].some(w => lower.includes(w))) {
+      return {
+        response: 'I\'m always alert and ready to help! 🛡️\n\nMore importantly — **how are you doing**? Are you safe? Do you need any assistance?',
+        speak: false,
+      };
+    }
+
+    // === NAME / WHO ARE YOU ===
+    if (['your name', 'who are you', 'called', 'yourself', 'name is'].some(w => lower.includes(w))) {
+      return {
+        response: 'I\'m **Raksha** 🛡️ — which means "protection" in Sanskrit.\n\nI\'m your AI emergency response assistant, designed to:\n• Keep you safe on the road\n• Detect crashes and fires\n• Dispatch emergency services\n• Monitor your vehicle\'s health\n\nHow can I protect you today?',
+        speak: true,
+      };
+    }
+
+    // === JOKE / FUN ===
+    if (['joke', 'funny', 'laugh', 'make me laugh', 'humor', 'hilarious'].some(w => lower.includes(w))) {
+      const jokes = [
+        'Why did the traffic light turn red?\n\n👉 You would too if you had to change in front of everyone! 🚦😄',
+        'What do you call a fake noodle?\n\n👉 An **impasta**! 🍝😄',
+        'Why did the scarecrow win an award?\n\n👉 Because he was **outstanding** in his field! 🌾😄',
+        'What do you call a bear with no teeth?\n\n👉 A **gummy bear**! 🐻😄',
+        'Why don\'t scientists trust atoms?\n\n👉 Because they make up **everything**! ⚛️😄',
+      ];
+      return { response: '😂 ' + jokes[Math.floor(Math.random() * jokes.length)], speak: true };
+    }
+
+    // === COMPLIMENT ===
+    if (['you are', 'you\'re', 'good', 'great', 'awesome', 'nice', 'amazing', 'love', 'best', 'brilliant'].some(w => lower.includes(w))) {
+      return {
+        response: 'Thank you! 😊 I\'m here to keep you safe!\n\nYour safety is my top priority. Is there anything I can help you with right now?',
+        speak: false,
+      };
+    }
+
+    // === DEFAULT VARIED FALLBACK ===
     return {
-      response: '📋 I understand you need information.\n\n• Emergency: Say "SOS", "trauma", "police"\n• Services: "towing", "puncture"\n• Monitoring: "fire", "temperature", "hardware"\n• General: "help", "voice", "location"\n\nOr tap the SOS button for immediate emergency dispatch.',
-      speak: true,
+      response: getFallbackResponse(),
+      speak: false,
     };
   };
 
@@ -308,6 +441,16 @@ export default function ChatCanvas({ theme, onToggleTheme }: ChatCanvasProps) {
     <div style={styles.container}>
       {/* Network State Banner */}
       <div style={{ ...styles.networkBanner, background: ns.bg, borderColor: ns.color }}>
+        {/* Back button — leftmost in header */}
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={styles.backButton}
+            aria-label="Back to Dashboard"
+          >
+            ←
+          </button>
+        )}
         <div style={{ ...styles.networkDot, background: ns.color, boxShadow: `0 0 6px ${ns.color}` }} />
         <span style={{ ...styles.networkLabel, color: ns.color }}>{ns.label}</span>
         <div style={{ flex: 1 }} />
@@ -881,5 +1024,22 @@ const styles: Record<string, React.CSSProperties> = {
     animation: 'cursor-blink 1s step-end infinite',
     fontWeight: '300',
     marginLeft: '1px',
+  },
+  backButton: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    border: '1px solid rgba(249,250,251,0.1)',
+    background: 'rgba(249,250,251,0.06)',
+    color: 'var(--text-primary)',
+    fontSize: '16px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    transition: 'all 0.2s ease',
   },
 };

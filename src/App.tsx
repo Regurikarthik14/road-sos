@@ -159,7 +159,7 @@ export default function App() {
       )}
 
       {activeView === 'chat' && (
-        <ChatCanvas theme={theme} onToggleTheme={toggleTheme} />
+        <ChatCanvas theme={theme} onToggleTheme={toggleTheme} onBack={() => setActiveView('dashboard')} />
       )}
 
       {activeView === 'failsafe' && (
@@ -177,34 +177,7 @@ export default function App() {
         <BottomNav activeView={activeView} onNavigate={handleNavigate} />
       )}
 
-      {/* Back button for dashboard context — navigates from chat to dashboard */}
-      {activeView === 'chat' && (
-        <button
-          style={{
-            position: 'absolute',
-            top: 'calc(8px + env(safe-area-inset-top, 0px))',
-            left: '8px',
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            border: '1px solid rgba(249,250,251,0.1)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '18px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-            outline: 'none',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-          onClick={() => setActiveView('dashboard')}
-          aria-label="Back to Dashboard"
-        >
-          ←
-        </button>
-      )}
+
     </div>
   );
 }
