@@ -64,7 +64,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     padding: '8px 16px',
     paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-    borderTop: '1px solid rgba(249, 250, 251, 0.08)',
+    borderTop: '1px solid var(--border-light)',
     background: 'var(--bg-primary)',
     flexShrink: 0,
   },

@@ -22,9 +22,11 @@ interface DashboardProps {
   userLocation: UserLocation | null;
   geoStatus: string;
   fallSignal: number;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
 }
 
-export default function Dashboard({ onSOSPress, onChatPress, crashDetection, userLocation, geoStatus, fallSignal }: DashboardProps) {
+export default function Dashboard({ onSOSPress, onChatPress, crashDetection, userLocation, geoStatus, fallSignal, theme, onToggleTheme }: DashboardProps) {
   const [activeChip, setActiveChip] = useState<CategoryInfo | null>(null);
   const [autoSOSCountdown, setAutoSOSCountdown] = useState<number | null>(null);
   const prevFallSignalRef = useRef(fallSignal);
@@ -226,9 +228,18 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection, use
       {/* Header */}
       <div style={styles.header} className="responsive-header">
         <span style={styles.logo} className="responsive-logo">🛡️ Raksha</span>
-        <div style={styles.connectionBadge}>
-          <span style={styles.connectionDot} />
-          <span style={styles.connectionText}>Connected</span>
+        <div style={styles.headerRight}>
+          <button
+            onClick={onToggleTheme}
+            style={styles.themeToggle}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+          <div style={styles.connectionBadge}>
+            <span style={styles.connectionDot} />
+            <span style={styles.connectionText}>Connected</span>
+          </div>
         </div>
       </div>
 
@@ -315,55 +326,58 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection, use
         </div>
       </div>
 
-      {/* Hardware Status Panel */}
-      <HardwareStatusPanel />
+      {/* Scrollable Content Below Hero */}
+      <div style={styles.scrollContent}>
+        {/* Hardware Status Panel */}
+        <HardwareStatusPanel />
 
-      {/* Fire Detection Panel */}
-      <FireDetection />
+        {/* Fire Detection Panel */}
+        <FireDetection />
 
-      {/* Crash Detection Banner */}
-      <CrashDetectBanner
-        status={crashDetection.status}
-        impactDetected={crashDetection.impactDetected}
-        loudDetected={crashDetection.loudDetected}
-        permissionDenied={crashDetection.permissionDenied}
-      />
+        {/* Crash Detection Banner */}
+        <CrashDetectBanner
+          status={crashDetection.status}
+          impactDetected={crashDetection.impactDetected}
+          loudDetected={crashDetection.loudDetected}
+          permissionDenied={crashDetection.permissionDenied}
+        />
 
-      {/* Quick Category Chips */}
-      <div style={styles.chipRow} className="responsive-chips">
-        {CATEGORIES.map((cat) => {
-          const isActive = activeChip?.id === cat.id;
-          return (
-            <button
-              key={cat.id}
-              style={{
-                ...styles.chip,
-                ...(isActive ? styles.chipActive : {}),
-              }}
-              className="responsive-chip"
-              onClick={() => setActiveChip(isActive ? null : cat)}
-              aria-label={cat.label}
-              aria-pressed={isActive}
-            >
-              <span style={styles.chipIcon} className="responsive-chip-icon">{cat.icon}</span>
-              <span style={{
-                ...styles.chipLabel,
-                ...(isActive ? { color: '#EF4444' } : {}),
-              }} className="responsive-chip-label">{cat.label}</span>
-            </button>
-          );
-        })}
+        {/* Quick Category Chips */}
+        <div style={styles.chipRow} className="responsive-chips">
+          {CATEGORIES.map((cat) => {
+            const isActive = activeChip?.id === cat.id;
+            return (
+              <button
+                key={cat.id}
+                style={{
+                  ...styles.chip,
+                  ...(isActive ? styles.chipActive : {}),
+                }}
+                className="responsive-chip"
+                onClick={() => setActiveChip(isActive ? null : cat)}
+                aria-label={cat.label}
+                aria-pressed={isActive}
+              >
+                <span style={styles.chipIcon} className="responsive-chip-icon">{cat.icon}</span>
+                <span style={{
+                  ...styles.chipLabel,
+                  ...(isActive ? { color: '#EF4444' } : {}),
+                }} className="responsive-chip-label">{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Chat Trigger */}
+        <button style={styles.chatTrigger} className="responsive-chat-trigger" onClick={onChatPress} aria-label="Open AI Chat">
+          <span style={styles.chatIcon}>💬</span>
+          <span style={styles.chatTriggerText} className="responsive-chat-trigger-text">Say "Help Raksha"</span>
+          <span style={styles.micIcon}>🎤</span>
+        </button>
+
+        {/* Medical card at bottom */}
+        <MedicalCard variant="collapsed" />
       </div>
-
-      {/* Chat Trigger */}
-      <button style={styles.chatTrigger} className="responsive-chat-trigger" onClick={onChatPress} aria-label="Open AI Chat">
-        <span style={styles.chatIcon}>💬</span>
-        <span style={styles.chatTriggerText} className="responsive-chat-trigger-text">Say "Help Raksha"</span>
-        <span style={styles.micIcon}>🎤</span>
-      </button>
-
-      {/* Medical card at bottom */}
-      <MedicalCard variant="collapsed" />
 
       {/* Map overlay when category is active — covers everything */}
       {activeChip && (
@@ -387,14 +401,37 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '16px 20px 8px',
-    paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
+    padding: '12px 16px 8px',
+    paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+    flexShrink: 0,
   },
   logo: {
     fontSize: '20px',
     fontWeight: '700',
     color: 'var(--text-primary)',
     letterSpacing: '-0.5px',
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  themeToggle: {
+    width: '34px',
+    height: '34px',
+    borderRadius: '50%',
+    border: '1px solid var(--border-color)',
+    background: 'var(--bg-secondary)',
+    fontSize: '16px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    transition: 'all 0.2s ease',
+    lineHeight: 1,
+    padding: 0,
   },
   connectionBadge: {
     display: 'flex',
@@ -418,14 +455,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '600',
   },
   heroArea: {
-    flex: 1,
+    flex: '0 0 auto',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '8px 20px',
     gap: '8px',
-    minHeight: 0,
     overflow: 'hidden',
   },
   radialDial: {
@@ -547,6 +583,12 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     fontWeight: '500',
   },
+  scrollContent: {
+    flex: 1,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    paddingBottom: '8px',
+  },
   chipRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, 1fr)',
@@ -560,7 +602,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '4px',
     padding: '10px 4px',
     borderRadius: '12px',
-    border: '1px solid rgba(249, 250, 251, 0.1)',
+    border: '1px solid var(--border-light)',
     background: 'var(--bg-secondary)',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -586,10 +628,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    margin: '0 16px 12px',
+    margin: '0 16px 10px',
     padding: '12px 16px',
     borderRadius: '12px',
-    border: '1px solid rgba(249, 250, 251, 0.08)',
+    border: '1px solid var(--border-light)',
     background: 'var(--bg-secondary)',
     cursor: 'pointer',
     transition: 'all 0.2s ease',

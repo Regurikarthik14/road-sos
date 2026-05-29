@@ -264,7 +264,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     height: '4px',
     borderRadius: '2px',
-    background: 'rgba(249,250,251,0.06)',
+    background: 'var(--bg-secondary)',
     overflow: 'hidden',
   },
   metricBarFill: {
@@ -316,7 +316,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     height: '4px',
     borderRadius: '2px',
-    background: 'rgba(255,255,255,0.1)',
+    background: 'var(--bg-secondary)',
     overflow: 'hidden',
   },
   callTimerFill: {
@@ -330,7 +330,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '6px 0',
     borderRadius: '8px',
     border: '1px solid',
-    background: 'rgba(249,250,251,0.04)',
+    background: 'var(--bg-secondary)',
     fontSize: '11px',
     fontWeight: '700',
     cursor: 'pointer',

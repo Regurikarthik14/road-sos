@@ -153,6 +153,8 @@ export default function App() {
           userLocation={userLocation}
           geoStatus={geoStatus}
           fallSignal={fallSignal}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
       )}
 
