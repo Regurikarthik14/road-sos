@@ -37,6 +37,9 @@ ehthumbs.db
 .env.local
 .env.*.local
 
+# Windows artifacts
+nul
+
 # Misc
 *.pem
 *.tsbuildinfo

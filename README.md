@@ -1,7 +1,7 @@
 <div align="center">
   <br />
-  <h1>🆘 ROADSoS</h1>
-  <p><strong>Emergency Roadside Assistance — Real-Time. Intelligent. Life-Saving.</strong></p>
+  <h1>🛡️ Raksha</h1>
+  <p><strong>Emergency Response Assistant — Real-Time. Intelligent. Life-Saving.</strong></p>
   <br />
 </div>
 
@@ -17,9 +17,11 @@
 
 ## 📋 Overview
 
-**ROADSoS** is a modern, real-time emergency roadside assistance web application built with React 19 and TypeScript. It provides instant access to nearby trauma centers, police stations, towing services, and puncture repair shops — all rendered on an interactive dark-themed map powered by Leaflet.
+**Raksha** (meaning "protection" in Sanskrit) is a modern, real-time emergency response web application built with React 19 and TypeScript. It provides instant access to nearby trauma centers, police stations, towing services, and puncture repair shops — all rendered on an interactive dark-themed map powered by Leaflet.
 
-The app features live geolocation tracking, an SOS emergency dispatch system with countdown, crash detection via device sensors, and an AI-powered chat assistant for hands-free interaction.
+The app features live geolocation tracking, an SOS emergency dispatch system with countdown, crash detection via device sensors, an AI-powered chat assistant with voice mode, real-time temperature/fire monitoring, and hardware health tracking.
+
+> 🛡️ *Raksha — Protecting you when every second counts.*
 
 ---
 
@@ -55,6 +57,22 @@ The app features live geolocation tracking, an SOS emergency dispatch system wit
 - **Co-trigger logic** — Both impact AND loud sound must occur within a 2-second window to trigger
 - **Auto-dispatch** — 3-second countdown on crash detection, sends location to first responders
 
+### 🌡️ Fire Detection
+- **Real-time temperature monitoring** — Simulated ambient temperature readings with realistic variance
+- **Fire alert** — If temperature exceeds 50°C, automatic fire & ambulance dispatch
+- **Elevated warning** — Temperature 35-50°C triggers monitoring warning
+
+### ⚙️ Hardware Health Monitoring
+- **CPU, Battery & Sensor tracking** — Real-time health percentage with visual bars
+- **Damage detection** — Gradual degradation simulation with detailed diagnostics
+- **Owner call protocol** — On critical damage, calls owner with 15-second countdown
+- **Auto-action** — If no owner response, autonomously triggers emergency dispatch
+
+### 🎤 Voice Tuning
+- **Speech-to-Text** — Real voice recognition via Web Speech API
+- **Text-to-Speech** — AI responses spoken aloud with configurable pitch & rate
+- **Voice settings** — Tune voice output with pitch and rate sliders
+
 ### 🏥 Medical ID
 - **Collapsible card** — Always-visible compact medical ID strip on the dashboard
 - **Full quick-read** — Expanded view with blood type, emergency contact, allergies, and medications
@@ -79,7 +97,7 @@ The app features live geolocation tracking, an SOS emergency dispatch system wit
 | **Vite 8** | Lightning-fast dev server and build tool |
 | **Leaflet 1.9** | Interactive map rendering with custom markers and popups |
 | **CSS3** | Responsive design with CSS custom properties and media queries |
-| **Web APIs** | `Geolocation.watchPosition`, `DeviceMotionEvent`, `MediaDevices.getUserMedia`, `AudioContext` |
+| **Web APIs** | `Geolocation.watchPosition`, `DeviceMotionEvent`, `MediaDevices.getUserMedia`, `AudioContext`, `SpeechRecognition`, `SpeechSynthesis` |
 
 ---
 

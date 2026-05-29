@@ -4,6 +4,7 @@ export type CrashDetectStatus = 'inactive' | 'listening' | 'audio-ready' | 'moni
 
 interface CrashDetectionOptions {
   onCrashDetected: () => void;
+  onImpactDetected?: () => void;
 }
 
 // Impact threshold in m/s². Normal gravity is ~9.8.
@@ -19,7 +20,7 @@ const CO_TRIGGER_WINDOW = 2000;
 // How long (ms) to keep an impact/loud timestamp before discarding
 const STALE_TIMEOUT = CO_TRIGGER_WINDOW + 500;
 
-export function useCrashDetection({ onCrashDetected }: CrashDetectionOptions) {
+export function useCrashDetection({ onCrashDetected, onImpactDetected }: CrashDetectionOptions) {
   const [status, setStatus] = useState<CrashDetectStatus>('inactive');
   const [impactDetected, setImpactDetected] = useState(false);
   const [loudDetected, setLoudDetected] = useState(false);
@@ -100,6 +101,8 @@ export function useCrashDetection({ onCrashDetected }: CrashDetectionOptions) {
         scheduleExpiry(impactTimeRef);
         setImpactDetected(true);
         checkCoTrigger();
+        // Fire fall/impact detected callback for auto-SOS countdown
+        onImpactDetected?.();
       }
     };
 

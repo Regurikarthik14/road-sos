@@ -5,6 +5,7 @@ import FailsafeUI from './components/FailsafeUI';
 import BottomNav from './components/BottomNav';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useCrashDetection } from './hooks/useCrashDetection';
+import { useTheme } from './hooks/useTheme';
 import type { AppView } from './types';
 import './App.css';
 
@@ -13,8 +14,10 @@ export default function App() {
   const [isEmergencyTriggered, setIsEmergencyTriggered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const { userLocation } = useGeolocation();
+  const { userLocation, geoStatus } = useGeolocation();
+  const { theme, toggleTheme } = useTheme();
   const [crashTriggered, setCrashTriggered] = useState(false);
+  const [fallSignal, setFallSignal] = useState(0);
 
   // Handle crash detection — auto-trigger failsafe with shorter countdown
   const handleCrashDetected = useCallback(() => {
@@ -23,7 +26,15 @@ export default function App() {
     setIsEmergencyTriggered(true);
   }, []);
 
-  const crashDetect = useCrashDetection({ onCrashDetected: handleCrashDetected });
+  // Handle fall/impact detection — increment signal to start auto-SOS countdown on Dashboard
+  const handleImpactDetected = useCallback(() => {
+    setFallSignal(prev => prev + 1);
+  }, []);
+
+  const crashDetect = useCrashDetection({
+    onCrashDetected: handleCrashDetected,
+    onImpactDetected: handleImpactDetected,
+  });
 
   // Simulate loading on mount (show skeleton)
   useEffect(() => {
@@ -139,11 +150,14 @@ export default function App() {
           onSOSPress={handleSOSPress}
           onChatPress={() => setActiveView('chat')}
           crashDetection={crashDetect}
+          userLocation={userLocation}
+          geoStatus={geoStatus}
+          fallSignal={fallSignal}
         />
       )}
 
       {activeView === 'chat' && (
-        <ChatCanvas />
+        <ChatCanvas theme={theme} onToggleTheme={toggleTheme} />
       )}
 
       {activeView === 'failsafe' && (

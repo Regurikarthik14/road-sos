@@ -6,6 +6,8 @@ import type { CategoryInfo } from '../types';
 interface MapViewProps {
   activeCategory: CategoryInfo | null;
   onClose: () => void;
+  userLocation: { lat: number; lng: number; accuracy: number | null } | null;
+  geoStatus: string;
 }
 
 interface LocationData {
@@ -19,9 +21,7 @@ interface LocationData {
   lng: number;
 }
 
-// Fallback location (NYC) when geolocation is unavailable
-const FALLBACK_LOCATION: [number, number] = [40.7128, -74.006];
-const FALLBACK_NAME = 'New York City';
+// No fallback — we only show the map when we have real GPS coordinates
 
 // Generate synthetic nearby locations relative to a center point
 function generateLocations(
@@ -127,17 +127,15 @@ function injectPopupStyles() {
   document.head.appendChild(style);
 }
 
-export default function MapView({ activeCategory, onClose }: MapViewProps) {
+export default function MapView({ activeCategory, onClose, userLocation: sharedLocation, geoStatus }: MapViewProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const locationsRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<L.Layer[]>([]);
   const popupMarkersRef = useRef<L.CircleMarker[]>([]);
-  const watchIdRef = useRef<number | null>(null);
 
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; name: string; accuracy?: number } | null>(null);
-  const [geoStatus, setGeoStatus] = useState<'locating' | 'ready' | 'error' | 'denied'>('locating');
-  const [followUser, setFollowUser] = useState(false);
+  const [mapInitialized, setMapInitialized] = useState(false);
+  const [followUser, setFollowUser] = useState(true);
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isRouting, setIsRouting] = useState(false);
@@ -149,7 +147,7 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
   const getDirRef = useRef<((index: number) => void) | null>(null);
   getDirRef.current = (index: number) => {
     const loc = locations[index];
-    if (!loc) return;
+    if (!loc || !center) return;
     if (activeRouteIndex === index) {
       clearRoute();
     } else {
@@ -171,68 +169,19 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
   // Inject Leaflet popup dark styles once
   useEffect(() => { injectPopupStyles(); }, []);
 
-  // Request geolocation on mount — watchPosition for continuous real-time tracking
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoStatus('error');
-      return;
-    }
+  // Build locations from user position — only when we have real GPS data
+  const center = sharedLocation
+    ? ([sharedLocation.lat, sharedLocation.lng] as [number, number])
+    : null;
 
-    const timeoutId = setTimeout(() => {
-      if (geoStatus === 'locating') {
-        setGeoStatus('error');
-      }
-    }, 10000);
-
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        clearTimeout(timeoutId);
-        setUserLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          name: 'Your Location',
-          accuracy: position.coords.accuracy,
-        });
-        setGeoStatus('ready');
-      },
-      (err) => {
-        clearTimeout(timeoutId);
-        if (err.code === err.PERMISSION_DENIED) {
-          setGeoStatus('denied');
-        } else {
-          setGeoStatus('error');
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 10000, // 10 sec cache — faster updates
-      },
-    );
-
-    watchIdRef.current = watchId;
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-    };
-  }, []);
-
-  // Build locations from user position or fallback
-  const center = userLocation
-    ? ([userLocation.lat, userLocation.lng] as [number, number])
-    : FALLBACK_LOCATION;
-
-  const locations = activeCategory
-    ? (generateLocations(center[0], center[1], userLocation?.name ?? FALLBACK_NAME)[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
+  // Locations are built from center — but only once GPS data is available
+  const locations = activeCategory && center
+    ? (generateLocations(center[0], center[1], 'Your Location')[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
     : [];
 
-  // Create map once on mount
+  // Create map when we have real GPS coordinates
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    if (!mapContainerRef.current || !center || mapInitialized) return;
 
     delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
     L.Icon.Default.mergeOptions({
@@ -260,21 +209,23 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
     }).addTo(map);
 
     mapRef.current = map;
+    setMapInitialized(true);
 
     return () => {
       map.remove();
       mapRef.current = null;
       layerRef.current = [];
       popupMarkersRef.current = [];
+      setMapInitialized(false);
     };
-  }, []);
+  }, [center]);
 
   // Update map center when user location resolves or moves (if auto-follow is on)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !userLocation || !followUser) return;
-    map.setView([userLocation.lat, userLocation.lng], map.getZoom());
-  }, [userLocation, followUser]);
+    if (!map || !sharedLocation || !followUser) return;
+    map.setView([sharedLocation.lat, sharedLocation.lng], map.getZoom());
+  }, [sharedLocation, followUser]);
 
   // Scroll locations list to top when category changes
   useEffect(() => {
@@ -381,7 +332,7 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
   // Update markers when category or user location changes
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !activeCategory) return;
+    if (!map || !activeCategory || !center) return;
 
     const catLocations = locations;
     const color = CATEGORY_COLORS[activeCategory.id] || '#EF4444';
@@ -391,12 +342,13 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
     layerRef.current = [];
     popupMarkersRef.current = [];
 
-    const allPoints: L.LatLngExpression[] = [center];
+    const mapCenter: [number, number] = [center[0], center[1]];
+    const allPoints: L.LatLngExpression[] = [mapCenter];
 
     // User location — accuracy radius circle
-    if (userLocation?.accuracy) {
-      const accuracyCircle = L.circle(center, {
-        radius: userLocation.accuracy,
+    if (sharedLocation?.accuracy) {
+      const accuracyCircle = L.circle(mapCenter, {
+        radius: sharedLocation.accuracy,
         color: '#EF4444',
         weight: 1,
         opacity: 0.3,
@@ -408,7 +360,7 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
     }
 
     // User location — outer pulsing ring
-    const userOuter = L.circleMarker(center, {
+    const userOuter = L.circleMarker(mapCenter, {
       radius: 16,
       fillColor: '#EF4444',
       color: '#fff',
@@ -419,7 +371,7 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
     }).addTo(map);
 
     // User location — inner solid dot
-    const userInner = L.circleMarker(center, {
+    const userInner = L.circleMarker(mapCenter, {
       radius: 6,
       fillColor: '#EF4444',
       color: '#EF4444',
@@ -427,13 +379,10 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
       fillOpacity: 1,
     }).addTo(map);
 
-    const locationLabel = userLocation
-      ? 'Your Location'
-      : 'You (approx)';
-    const userLabel = L.marker(center, {
+    const userLabel = L.marker(mapCenter, {
       icon: L.divIcon({
         className: 'map-user-label',
-        html: `<span style="color:#F9FAFB;font-size:10px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;white-space:nowrap;">${locationLabel}</span>`,
+        html: `<span style="color:#F9FAFB;font-size:10px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;white-space:nowrap;">Your Location</span>`,
         iconSize: [30, 16],
         iconAnchor: [15, 20],
       }),
@@ -502,7 +451,7 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
       layerRef.current = [];
       popupMarkersRef.current = [];
     };
-  }, [activeCategory, userLocation]);
+  }, [activeCategory, sharedLocation, center]);
 
   if (!activeCategory) return null;
 
@@ -602,15 +551,12 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
           <span style={styles.locationBannerText}>Finding your location…</span>
         </div>
       )}
-      {geoStatus === 'denied' && !userLocation && (
+      {geoStatus === 'denied' && !sharedLocation && (
         <div style={{ ...styles.locationBanner, background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}>
           <span style={{ fontSize: '12px' }}>⚠️</span>
           <span style={styles.locationBannerText}>Location access denied — enable in browser settings</span>
           <button
-            onClick={() => {
-              setGeoStatus('locating');
-              window.location.reload();
-            }}
+            onClick={() => window.location.reload()}
             style={{
               marginLeft: 'auto',
               padding: '3px 10px',
@@ -627,15 +573,12 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
           </button>
         </div>
       )}
-      {geoStatus === 'error' && !userLocation && (
+      {geoStatus === 'error' && !sharedLocation && (
         <div style={{ ...styles.locationBanner, background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)' }}>
           <span style={{ fontSize: '12px' }}>⚠️</span>
-          <span style={styles.locationBannerText}>Location unavailable — showing approximate area</span>
+          <span style={styles.locationBannerText}>Location unavailable — enable GPS and refresh</span>
           <button
-            onClick={() => {
-              setGeoStatus('locating');
-              window.location.reload();
-            }}
+            onClick={() => window.location.reload()}
             style={{
               marginLeft: 'auto',
               padding: '3px 10px',
@@ -652,20 +595,50 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
           </button>
         </div>
       )}
-      {geoStatus === 'ready' && userLocation && (
+      {geoStatus === 'ready' && sharedLocation && (
         <div style={{ ...styles.locationBanner, background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.15)' }}>
           <span style={{ fontSize: '12px' }}>📍</span>
           <span style={styles.locationBannerText}>
             Live location active
-            {userLocation.accuracy ? ` (within ${Math.round(userLocation.accuracy)}m)` : ''}
+            {sharedLocation.accuracy ? ` (within ${Math.round(sharedLocation.accuracy)}m)` : ''}
           </span>
         </div>
       )}
 
-      {/* Leaflet Map */}
-      <div ref={mapContainerRef} style={styles.mapContainer} className="responsive-map-container" />
+      {/* GPS Loading State — shown while waiting for location */}
+      {!mapInitialized && (
+        <div style={styles.mapContainer} className="responsive-map-container">
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            gap: '16px',
+            background: 'var(--bg-primary)',
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              border: '3px solid rgba(239,68,68,0.15)',
+              borderTopColor: '#EF4444',
+              animation: 'spin 1s linear infinite',
+            }} />
+            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+              {geoStatus === 'locating' ? 'Getting your current location…' : 'Waiting for GPS signal…'}
+            </span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', opacity: 0.6 }}>
+              Please allow location access when prompted
+            </span>
+          </div>
+        </div>
+      )}
 
-      {/* Location cards */}
+      {/* Leaflet Map container (rendered but hidden until initialized) */}
+      <div ref={mapContainerRef} style={{ ...styles.mapContainer, display: mapInitialized ? 'block' : 'none' }} className="responsive-map-container" />
+
+      {/* Location cards — only shown when we have GPS and there are locations */}
       <div ref={locationsRef} style={styles.locationsList} className="responsive-location-cards">
         {locations.map((loc, i) => (
           <div
@@ -694,10 +667,11 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
                 <span style={{ fontSize: '10px', color }}>{loc.direction}</span> · {loc.distance} · {loc.eta}
               </span>
             </div>
-            {/* Directions button */}
+            {/* Directions button — disabled until GPS resolves */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                if (!center) return;
                 if (activeRouteIndex === i) {
                   clearRoute();
                 } else {
@@ -822,6 +796,10 @@ export default function MapView({ activeCategory, onClose }: MapViewProps) {
           50%  { opacity: 0.4; transform: scale(0.6); }
           100% { opacity: 1; transform: scale(1); }
         }
+        /* Loading spinner */
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
       `}</style>
     </div>
   );
@@ -919,16 +897,16 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
-  },
-  locationName: {
+  },      locationName: {
     fontSize: '14px',
     fontWeight: '700',
     color: 'var(--text-primary)',
-  },
-  locationMeta: {
+    transition: 'color 0.2s ease',
+  },      locationMeta: {
     fontSize: '12px',
     color: 'var(--text-secondary)',
     fontWeight: '500',
+    transition: 'color 0.2s ease',
   },
   locationStatus: {
     fontSize: '11px',

@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { CATEGORIES, SOS_MORSE } from '../types';
 import type { CategoryInfo } from '../types';
 import MedicalCard from './MedicalCard';
 import MapView from './MapView';
 import CrashDetectBanner from './CrashDetectBanner';
+import HardwareStatusPanel from './HardwareStatus';
+import FireDetection from './FireDetection';
 import type { CrashDetectStatus } from '../hooks/useCrashDetection';
+
+import type { UserLocation } from '../hooks/useGeolocation';
 
 interface DashboardProps {
   onSOSPress: () => void;
@@ -15,12 +19,164 @@ interface DashboardProps {
     loudDetected: boolean;
     permissionDenied: boolean;
   };
+  userLocation: UserLocation | null;
+  geoStatus: string;
+  fallSignal: number;
 }
 
-export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: DashboardProps) {
+export default function Dashboard({ onSOSPress, onChatPress, crashDetection, userLocation, geoStatus, fallSignal }: DashboardProps) {
   const [activeChip, setActiveChip] = useState<CategoryInfo | null>(null);
+  const [autoSOSCountdown, setAutoSOSCountdown] = useState<number | null>(null);
+  const prevFallSignalRef = useRef(fallSignal);
+  const countdownRef = useRef<number | null>(null);
   const radialRef = useRef<HTMLDivElement>(null);
   const hapticIntervalRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const alertIntervalRef = useRef<number | null>(null);
+  const alertGainRef = useRef<GainNode | null>(null);
+
+  // Watch fallSignal for changes — parent increments this when DeviceMotion detects impact
+  useEffect(() => {
+    if (fallSignal === 0) return;
+    if (fallSignal !== prevFallSignalRef.current) {
+      prevFallSignalRef.current = fallSignal;
+      // Start 10-second countdown if not already counting down
+      if (autoSOSCountdown === null) {
+        setAutoSOSCountdown(10);
+        // Vibrate to alert user
+        if (navigator.vibrate) {
+          navigator.vibrate([100, 100, 100, 100, 200]);
+        }
+      }
+    }
+  }, [fallSignal, autoSOSCountdown]);
+
+  // --- Alert Sound System ---
+  const startAlertSound = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+
+      // Resume if suspended (autoplay policy on mobile)
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      // Create a master gain node
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0, ctx.currentTime);
+      masterGain.connect(ctx.destination);
+      alertGainRef.current = masterGain;
+
+      // Fade in over 300ms
+      masterGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.3);
+
+      // Play a repeating urgent beep every second
+      const playBeep = () => {
+        if (!audioCtxRef.current || !alertGainRef.current) return;
+        const ctx2 = audioCtxRef.current;
+
+        // Create two oscillators for a more urgent sound
+        const osc1 = ctx2.createOscillator();
+        const osc2 = ctx2.createOscillator();
+        const beepGain = ctx2.createGain();
+
+        osc1.type = 'square';
+        osc1.frequency.setValueAtTime(880, ctx2.currentTime);
+        osc1.frequency.linearRampToValueAtTime(660, ctx2.currentTime + 0.08);
+
+        osc2.type = 'sawtooth';
+        osc2.frequency.setValueAtTime(1320, ctx2.currentTime);
+        osc2.frequency.linearRampToValueAtTime(990, ctx2.currentTime + 0.08);
+
+        // Quick attack, short sustain, fast release
+        beepGain.gain.setValueAtTime(0.4, ctx2.currentTime);
+        beepGain.gain.exponentialRampToValueAtTime(0.001, ctx2.currentTime + 0.12);
+
+        osc1.connect(beepGain);
+        osc2.connect(beepGain);
+        beepGain.connect(alertGainRef.current);
+
+        osc1.start(ctx2.currentTime);
+        osc1.stop(ctx2.currentTime + 0.12);
+        osc2.start(ctx2.currentTime);
+        osc2.stop(ctx2.currentTime + 0.12);
+      };
+
+      // Play immediately and repeat
+      playBeep();
+      alertIntervalRef.current = window.setInterval(playBeep, 1000);
+    } catch {
+      // Audio not available — silent
+    }
+  }, []);
+
+  const stopAlertSound = useCallback(() => {
+    if (alertIntervalRef.current !== null) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+    // Fade out master gain
+    if (audioCtxRef.current && alertGainRef.current) {
+      try {
+        alertGainRef.current.gain.linearRampToValueAtTime(0, audioCtxRef.current.currentTime + 0.2);
+        setTimeout(() => {
+          if (audioCtxRef.current) {
+            audioCtxRef.current.close().catch(() => {});
+            audioCtxRef.current = null;
+          }
+          alertGainRef.current = null;
+        }, 300);
+      } catch {
+        audioCtxRef.current = null;
+        alertGainRef.current = null;
+      }
+    }
+  }, []);
+
+  // Auto-SOS countdown timer — start/stop alert sound
+  useEffect(() => {
+    if (autoSOSCountdown === null) {
+      stopAlertSound();
+      return;
+    }
+
+    // Start alert sound on first tick of the countdown
+    if (!audioCtxRef.current) {
+      startAlertSound();
+    }
+
+    if (autoSOSCountdown <= 0) {
+      // Countdown reached 0 — trigger SOS
+      stopAlertSound();
+      onSOSPress();
+      setAutoSOSCountdown(null);
+      return;
+    }
+
+    countdownRef.current = window.setTimeout(() => {
+      setAutoSOSCountdown(prev => (prev !== null ? prev - 1 : null));
+    }, 1000);
+
+    return () => {
+      if (countdownRef.current !== null) {
+        clearTimeout(countdownRef.current);
+        countdownRef.current = null;
+      }
+    };
+  }, [autoSOSCountdown, onSOSPress, stopAlertSound, startAlertSound]);
+
+  // Cancel auto-SOS
+  const cancelAutoSOS = useCallback(() => {
+    stopAlertSound();
+    if (countdownRef.current !== null) {
+      clearTimeout(countdownRef.current);
+      countdownRef.current = null;
+    }
+    setAutoSOSCountdown(null);
+  }, [stopAlertSound]);
 
   // Gentle pulse on mount
   useEffect(() => {
@@ -59,14 +215,17 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: D
   };
 
   useEffect(() => {
-    return () => stopSOSHaptic();
-  }, []);
+    return () => {
+      stopSOSHaptic();
+      stopAlertSound();
+    };
+  }, [stopAlertSound]);
 
   return (
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header} className="responsive-header">
-        <span style={styles.logo} className="responsive-logo">🆘 ROADSoS</span>
+        <span style={styles.logo} className="responsive-logo">🛡️ Raksha</span>
         <div style={styles.connectionBadge}>
           <span style={styles.connectionDot} />
           <span style={styles.connectionText}>Connected</span>
@@ -104,7 +263,12 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: D
 
           {/* SOS Button */}
           <button
-            style={styles.sosButton}
+            style={{
+              ...styles.sosButton,
+              animation: autoSOSCountdown !== null
+                ? 'sos-auto-pulse 0.6s ease-in-out infinite, pulse-glow 1s ease-in-out infinite'
+                : 'pulse-glow 2s ease-in-out infinite',
+            }}
             className="responsive-sos-btn"
             onMouseDown={() => { startSOSHaptic(); onSOSPress(); }}
             onMouseUp={stopSOSHaptic}
@@ -114,9 +278,34 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: D
             aria-label="Activate SOS Emergency"
             role="button"
           >
-            <span style={styles.sosText} className="responsive-sos-text">SOS</span>
-            <span style={styles.sosSubtext}>TAP FOR EMERGENCY</span>
+            {autoSOSCountdown !== null ? (
+              <>
+                <span style={styles.sosCountdownNumber}>{autoSOSCountdown}</span>
+                <span style={styles.sosCountdownLabel}>AUTO SOS</span>
+              </>
+            ) : (
+              <>
+                <span style={styles.sosText} className="responsive-sos-text">SOS</span>
+                <span style={styles.sosSubtext}>TAP FOR EMERGENCY</span>
+              </>
+            )}
           </button>
+
+          {/* Cancel overlay — shown during auto-SOS countdown */}
+          {autoSOSCountdown !== null && (
+            <button
+              style={styles.cancelOverlay}
+              onClick={cancelAutoSOS}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                cancelAutoSOS();
+              }}
+              aria-label="Cancel automatic SOS"
+            >
+              <span style={styles.cancelOverlayIcon}>✕</span>
+              <span style={styles.cancelOverlayText}>CANCEL</span>
+            </button>
+          )}
         </div>
 
         {/* Status indicator */}
@@ -125,6 +314,12 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: D
           <span style={styles.statusLabel} className="responsive-status-label">System Online — Tap to dispatch</span>
         </div>
       </div>
+
+      {/* Hardware Status Panel */}
+      <HardwareStatusPanel />
+
+      {/* Fire Detection Panel */}
+      <FireDetection />
 
       {/* Crash Detection Banner */}
       <CrashDetectBanner
@@ -163,7 +358,7 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: D
       {/* Chat Trigger */}
       <button style={styles.chatTrigger} className="responsive-chat-trigger" onClick={onChatPress} aria-label="Open AI Chat">
         <span style={styles.chatIcon}>💬</span>
-        <span style={styles.chatTriggerText} className="responsive-chat-trigger-text">Say "Help ROADSOS"</span>
+        <span style={styles.chatTriggerText} className="responsive-chat-trigger-text">Say "Help Raksha"</span>
         <span style={styles.micIcon}>🎤</span>
       </button>
 
@@ -172,7 +367,7 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection }: D
 
       {/* Map overlay when category is active — covers everything */}
       {activeChip && (
-        <MapView activeCategory={activeChip} onClose={() => setActiveChip(null)} />
+        <MapView activeCategory={activeChip} onClose={() => setActiveChip(null)} userLocation={userLocation} geoStatus={geoStatus} />
       )}
     </div>
   );
@@ -285,6 +480,54 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '8px',
     fontWeight: '700',
     color: 'rgba(255,255,255,0.8)',
+    letterSpacing: '1px',
+  },
+  sosCountdownNumber: {
+    fontSize: '48px',
+    fontWeight: '900',
+    color: '#fff',
+    textShadow: '0 2px 12px rgba(0,0,0,0.4)',
+    fontFamily: 'var(--font-mono)',
+    lineHeight: 1,
+    animation: 'countdown-pulse 0.5s ease-in-out infinite',
+  },
+  sosCountdownLabel: {
+    fontSize: '10px',
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: '2px',
+    textTransform: 'uppercase',
+  },
+  cancelOverlay: {
+    position: 'absolute' as const,
+    bottom: '-40px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 16px',
+    borderRadius: '20px',
+    border: '2px solid rgba(255,255,255,0.8)',
+    background: 'rgba(0,0,0,0.5)',
+    cursor: 'pointer',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    whiteSpace: 'nowrap',
+    zIndex: 10,
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    animation: 'fade-in 0.3s ease',
+  },
+  cancelOverlayIcon: {
+    fontSize: '14px',
+    color: '#fff',
+    fontWeight: '700',
+  },
+  cancelOverlayText: {
+    fontSize: '11px',
+    fontWeight: '800',
+    color: '#fff',
     letterSpacing: '1px',
   },
   statusRow: {
