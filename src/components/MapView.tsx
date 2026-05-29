@@ -25,6 +25,58 @@ interface LocationData {
 const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 };
 const DEFAULT_CITY = 'Bangalore';
 
+// Traffic segment colors (simulated — like Google Maps)
+type TrafficColor = '#22C55E' | '#EAB308' | '#EF4444';  // green, yellow, red
+
+interface TrafficSegment {
+  coords: [number, number][];
+  color: TrafficColor;
+}
+
+// Simulate a multi-traffic route: start green, middle yellow, end red (near city center)
+function generateTrafficSegments(coords: [number, number][]): TrafficSegment[] {
+  if (coords.length < 6) {
+    // Too short for meaningful segments — all green
+    return [{ coords, color: '#22C55E' }];
+  }
+
+  // Split into 8-12 segments
+  const numSegments = Math.min(12, Math.max(6, Math.floor(coords.length / 5)));
+  const segmentSize = Math.floor(coords.length / numSegments);
+  const segments: TrafficSegment[] = [];
+
+  // Simulated traffic pattern: 
+  // - First 3 segments: mostly green (outskirts → city approach)
+  // - Middle segments: mix of green/yellow (city outer ring)
+  // - Last segments: mix of yellow/red (city center)
+  // Each segment has a random variance so it doesn't look uniform
+
+  for (let i = 0; i < numSegments; i++) {
+    const start = i * segmentSize;
+    const end = i === numSegments - 1 ? coords.length : (i + 1) * segmentSize;
+    const segmentCoords = coords.slice(start, end);
+    if (segmentCoords.length === 0) continue;
+
+    // Normalized position 0→1 along the route
+    const t = i / (numSegments - 1);
+    const random = Math.random() * 0.3 - 0.15; // ±0.15 randomness
+    const trafficScore = t * 0.8 + random; // 0 = clear, ~1 = heavy
+
+    let color: TrafficColor;
+    if (trafficScore < 0.35) {
+      color = '#22C55E'; // green - clear
+    } else if (trafficScore < 0.65) {
+      color = '#EAB308'; // yellow - moderate
+    } else {
+      color = '#EF4444'; // red - heavy
+    }
+
+    segments.push({ coords: segmentCoords, color });
+  }
+
+  return segments;
+}
+
 // Generate synthetic nearby locations relative to a center point
 function generateLocations(
   centerLat: number,
@@ -93,6 +145,15 @@ const CATEGORY_COLORS: Record<string, string> = {
   puncture: '#F59E0B',
 };
 
+interface RouteInfoExt {
+  distance: string;
+  duration: string;
+  trafficSummary: string;
+  greenCount: number;
+  yellowCount: number;
+  redCount: number;
+}
+
 const POPUP_STYLES_ID = 'roadsos-leaflet-popup-styles';
 
 function injectPopupStyles() {
@@ -137,15 +198,15 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
   const [mapReady, setMapReady] = useState(false);
   const [followUser, setFollowUser] = useState(true);
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
-  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<RouteInfoExt | null>(null);
   const [isRouting, setIsRouting] = useState(false);
   const [useDemoLocation, setUseDemoLocation] = useState(false);
   const [demoAutoTriggered, setDemoAutoTriggered] = useState(false);
-  const routePolylineRef = useRef<L.Polyline | null>(null);
   const routeOutlineRef = useRef<L.Polyline | null>(null);
   const routeGlowRef = useRef<L.Polyline | null>(null);
   const routeMarkerStartRef = useRef<L.Marker | null>(null);
   const routeMarkerEndRef = useRef<L.Marker | null>(null);
+  const trafficSegmentsRef = useRef<L.Polyline[]>([]);
 
   // Determine effective center: real GPS, fallback demo, or wait
   const isDemoMode = useDemoLocation || (!sharedLocation && demoAutoTriggered);
@@ -283,10 +344,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       routeGlowRef.current.remove();
       routeGlowRef.current = null;
     }
-    if (routePolylineRef.current) {
-      routePolylineRef.current.remove();
-      routePolylineRef.current = null;
-    }
     if (routeMarkerStartRef.current) {
       routeMarkerStartRef.current.remove();
       routeMarkerStartRef.current = null;
@@ -295,6 +352,9 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       routeMarkerEndRef.current.remove();
       routeMarkerEndRef.current = null;
     }
+    // Clean up traffic segment polylines
+    trafficSegmentsRef.current.forEach((seg) => seg.remove());
+    trafficSegmentsRef.current = [];
     setActiveRouteIndex(null);
     setRouteInfo(null);
   }, []);
@@ -326,13 +386,27 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       const distKm = route.distance / 1000;
       const durMin = Math.round(route.duration / 60);
 
+      // Generate traffic-colored segments once (reused for both banner counts and rendering)
+      const trafficSegments = generateTrafficSegments(coords);
+      const greenCount = trafficSegments.filter(s => s.color === '#22C55E').length;
+      const yellowCount = trafficSegments.filter(s => s.color === '#EAB308').length;
+      const redCount = trafficSegments.filter(s => s.color === '#EF4444').length;
+      const totalCount = trafficSegments.length;
+      const trafficSummary = redCount > totalCount * 0.4 ? 'Heavy traffic'
+        : yellowCount > totalCount * 0.4 ? 'Moderate traffic'
+        : 'Light traffic';
+
       setRouteInfo({
         distance: distKm < 1 ? `${Math.round(route.distance)} m` : `${distKm.toFixed(1)} km`,
         duration: durMin < 1 ? '<1 min' : `${durMin} min`,
+        trafficSummary,
+        greenCount,
+        yellowCount,
+        redCount,
       });
       setActiveRouteIndex(index);
 
-      // === Google Maps-style route line: outer glow + inner solid line ===
+      // === Google Maps-style route line: outer glow + traffic-colored segments ===
 
       // Outer glow/outline layer (thicker, semi-transparent)
       const outline = L.polyline(coords, {
@@ -356,15 +430,19 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       }).addTo(map);
       routeGlowRef.current = glow;
 
-      // Inner solid line (the actual visible road path) — pure white like Google Maps
-      const polyline = L.polyline(coords, {
-        color: '#fff',
-        weight: 3.5,
-        opacity: 1,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(map);
-      routePolylineRef.current = polyline;
+      // Traffic-colored segments (green/yellow/red) replacing the single white line
+      const trafficPolylines: L.Polyline[] = [];
+      trafficSegments.forEach((seg) => {
+        const segLine = L.polyline(seg.coords, {
+          color: seg.color,
+          weight: 4,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(map);
+        trafficPolylines.push(segLine);
+      });
+      trafficSegmentsRef.current = trafficPolylines;
 
       // === Google Maps-style start marker (teardrop pin) ===
       const startSvg = `<svg width="28" height="40" viewBox="0 0 28 40" xmlns="http://www.w3.org/2000/svg">
@@ -415,29 +493,24 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       // === Route drawing animation (Google Maps-style reveal) ===
       // Uses SVG stroke-dasharray/dashoffset to draw the line from start to end
       requestAnimationFrame(() => {
-        const routeLayers = [
+        // Animate the outer outline and glow layers
+        const baseLayers = [
           { layer: outline, delay: 0.2 },
           { layer: glow, delay: 0.5 },
-          { layer: polyline, delay: 0.8 },
         ];
 
-        routeLayers.forEach(({ layer, delay }) => {
+        baseLayers.forEach(({ layer, delay }) => {
           const el = layer.getElement();
           if (!el) return;
-          const pathEl = el.tagName === 'path' ? el : el.querySelector('path');
+          const pathEl: SVGPathElement | null = el.tagName === 'path' ? (el as SVGPathElement) : el.querySelector('path') as SVGPathElement | null;
           if (!pathEl) return;
 
           try {
             const length = pathEl.getTotalLength();
-
-            // Hide the line by offsetting the entire dash
             pathEl.style.strokeDasharray = String(length);
             pathEl.style.strokeDashoffset = String(length);
-
-            // Animate: draw from start to end with staggered delay
             pathEl.style.animation = `route-draw ${1.2}s ease-out ${delay}s forwards`;
 
-            // Clean up dash properties after animation completes
             const onAnimEnd = () => {
               pathEl.style.strokeDasharray = '';
               pathEl.style.strokeDashoffset = '';
@@ -447,6 +520,32 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
             pathEl.addEventListener('animationend', onAnimEnd);
           } catch {
             // getTotalLength may fail on some SVG renderers — skip animation
+          }
+        });
+
+        // Animate each traffic segment with a staggered delay based on its position
+        trafficSegmentsRef.current.forEach((segPolyline, segIndex) => {
+          const el = segPolyline.getElement();
+          if (!el) return;
+          const pathEl: SVGPathElement | null = el.tagName === 'path' ? (el as SVGPathElement) : el.querySelector('path') as SVGPathElement | null;
+          if (!pathEl) return;
+
+          try {
+            const length = pathEl.getTotalLength();
+            const segDelay = 0.8 + (segIndex / trafficSegmentsRef.current.length) * 0.6;
+            pathEl.style.strokeDasharray = String(length);
+            pathEl.style.strokeDashoffset = String(length);
+            pathEl.style.animation = `route-draw ${1.0}s ease-out ${segDelay}s forwards`;
+
+            const onAnimEnd = () => {
+              pathEl.style.strokeDasharray = '';
+              pathEl.style.strokeDashoffset = '';
+              pathEl.style.animation = '';
+              pathEl.removeEventListener('animationend', onAnimEnd);
+            };
+            pathEl.addEventListener('animationend', onAnimEnd);
+          } catch {
+            // skip animation on this segment
           }
         });
       });
@@ -653,12 +752,32 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
             </span>
           </div>
 
-          {/* Destination name */}
+          {/* Destination name + traffic indicator */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1px' }}>
             <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
               {locations[activeRouteIndex]?.name || 'Destination'}
             </span>
-            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Traffic color dots */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                <span style={{
+                  width: '8px', height: '8px', borderRadius: '50%',
+                  background: '#22C55E', opacity: routeInfo.greenCount > 0 ? 1 : 0.2,
+                }} />
+                <span style={{
+                  width: '8px', height: '8px', borderRadius: '50%',
+                  background: '#EAB308', opacity: routeInfo.yellowCount > 0 ? 1 : 0.2,
+                }} />
+                <span style={{
+                  width: '8px', height: '8px', borderRadius: '50%',
+                  background: '#EF4444', opacity: routeInfo.redCount > 0 ? 1 : 0.2,
+                }} />
+              </div>
+              <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>
+                {routeInfo.trafficSummary}
+              </span>
+            </div>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '500' }}>
               {locations[activeRouteIndex]?.status || ''}
             </span>
           </div>
