@@ -21,7 +21,9 @@ interface LocationData {
   lng: number;
 }
 
-// No fallback — we only show the map when we have real GPS coordinates
+// Default fallback location (Bangalore, India) — used when GPS is unavailable
+const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 };
+const DEFAULT_CITY = 'Bangalore';
 
 // Generate synthetic nearby locations relative to a center point
 function generateLocations(
@@ -29,7 +31,6 @@ function generateLocations(
   centerLng: number,
   cityName: string
 ): Record<string, LocationData[]> {
-  // Approx 1 degree lat ≈ 111km, 1 degree lng ≈ 111*cos(lat) km
   const latKm = 111;
   const lngKm = 111 * Math.cos((centerLat * Math.PI) / 180);
 
@@ -47,7 +48,7 @@ function generateLocations(
   };
 
   const eta = (km: number): string => {
-    const mins = Math.ceil((km / 40) * 60); // assume 40 km/h avg
+    const mins = Math.ceil((km / 40) * 60);
     return `${mins} min`;
   };
 
@@ -85,7 +86,6 @@ function generateLocations(
   };
 }
 
-// Category color mapping
 const CATEGORY_COLORS: Record<string, string> = {
   trauma: '#EF4444',
   police: '#3B82F6',
@@ -93,7 +93,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   puncture: '#F59E0B',
 };
 
-// Dark popup styles injected once globally
 const POPUP_STYLES_ID = 'roadsos-leaflet-popup-styles';
 
 function injectPopupStyles() {
@@ -133,29 +132,48 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
   const locationsRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<L.Layer[]>([]);
   const popupMarkersRef = useRef<L.CircleMarker[]>([]);
+  const mapInitializedRef = useRef(false);
 
-  const [mapInitialized, setMapInitialized] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [followUser, setFollowUser] = useState(true);
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isRouting, setIsRouting] = useState(false);
+  const [useDemoLocation, setUseDemoLocation] = useState(false);
+  const [demoAutoTriggered, setDemoAutoTriggered] = useState(false);
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const routeMarkerStartRef = useRef<L.Marker | null>(null);
   const routeMarkerEndRef = useRef<L.Marker | null>(null);
 
-  // Ref-based handler for Leaflet popup HTML buttons — avoids stale closures
+  // Determine effective center: real GPS, fallback demo, or wait
+  const isDemoMode = useDemoLocation || (!sharedLocation && demoAutoTriggered);
+  const effectiveCenter: [number, number] | null = sharedLocation
+    ? [sharedLocation.lat, sharedLocation.lng]
+    : isDemoMode
+      ? [DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng]
+      : null;
+
+  // Auto-trigger demo location after 8 seconds if no GPS
+  useEffect(() => {
+    if (sharedLocation || demoAutoTriggered) return;
+    const timer = setTimeout(() => {
+      setDemoAutoTriggered(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [sharedLocation, demoAutoTriggered]);
+
+  // Ref-based handler for Leaflet popup HTML buttons
   const getDirRef = useRef<((index: number) => void) | null>(null);
   getDirRef.current = (index: number) => {
     const loc = locations[index];
-    if (!loc || !center) return;
+    if (!loc || !effectiveCenter) return;
     if (activeRouteIndex === index) {
       clearRoute();
     } else {
-      fetchRoute(center[0], center[1], loc.lat, loc.lng, index);
+      fetchRoute(effectiveCenter[0], effectiveCenter[1], loc.lat, loc.lng, index);
     }
   };
 
-  // Expose route fetcher globally for Leaflet popup HTML buttons
   useEffect(() => {
     const handler = (index: number) => getDirRef.current?.(index);
     (window as unknown as Record<string, unknown>).__roadsosGetDir = handler;
@@ -166,22 +184,18 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     };
   }, []);
 
-  // Inject Leaflet popup dark styles once
   useEffect(() => { injectPopupStyles(); }, []);
 
-  // Build locations from user position — only when we have real GPS data
-  const center = sharedLocation
-    ? ([sharedLocation.lat, sharedLocation.lng] as [number, number])
-    : null;
+  // Resolved center for generating locations
+  const center = effectiveCenter;
 
-  // Locations are built from center — but only once GPS data is available
   const locations = activeCategory && center
-    ? (generateLocations(center[0], center[1], 'Your Location')[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
+    ? (generateLocations(center[0], center[1], isDemoMode ? DEFAULT_CITY : 'Your Location')[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
     : [];
 
-  // Create map when we have real GPS coordinates
+  // Create Leaflet map when we have a center point
   useEffect(() => {
-    if (!mapContainerRef.current || !center || mapInitialized) return;
+    if (!mapContainerRef.current || !center || mapInitializedRef.current) return;
 
     delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
     L.Icon.Default.mergeOptions({
@@ -199,40 +213,65 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       scrollWheelZoom: true,
     });
 
-    // Disable auto-follow when user manually drags or zooms the map
     map.on('dragstart', () => setFollowUser(false));
     map.on('zoomstart', () => setFollowUser(false));
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Use OpenStreetMap tiles — more reliable than CartoDB
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20,
-      subdomains: ['a', 'b', 'c', 'd'],
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
 
     mapRef.current = map;
-    setMapInitialized(true);
+    mapInitializedRef.current = true;
+    setMapReady(true);
+
+    // Small delay to ensure container is rendered before invalidating size
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
 
     return () => {
       map.remove();
       mapRef.current = null;
+      mapInitializedRef.current = false;
+      setMapReady(false);
       layerRef.current = [];
       popupMarkersRef.current = [];
-      setMapInitialized(false);
     };
   }, [center]);
 
-  // Update map center when user location resolves or moves (if auto-follow is on)
+  // Update map center when user location changes (if auto-follow is on)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !sharedLocation || !followUser) return;
     map.setView([sharedLocation.lat, sharedLocation.lng], map.getZoom());
   }, [sharedLocation, followUser]);
 
-  // Scroll locations list to top when category changes
+  // Invalidate map size when map becomes ready (fixes layout issues)
+  useEffect(() => {
+    if (!mapReady) return;
+    const map = mapRef.current;
+    if (!map) return;
+    // Invalidate after render to ensure proper dimensions
+    const timer = setTimeout(() => map.invalidateSize(), 200);
+    return () => clearTimeout(timer);
+  }, [mapReady]);
+
+  // Invalidate size when container resizes
+  useEffect(() => {
+    if (!mapReady) return;
+    const handleResize = () => {
+      mapRef.current?.invalidateSize();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [mapReady]);
+
   useEffect(() => {
     locationsRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeCategory]);
 
-  // Clear any active route overlay
   const clearRoute = useCallback(() => {
     if (routePolylineRef.current) {
       routePolylineRef.current.remove();
@@ -250,7 +289,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     setRouteInfo(null);
   }, []);
 
-  // Fetch driving route from OSRM and draw on map
   const fetchRoute = useCallback(async (fromLat: number, fromLng: number, toLat: number, toLng: number, index: number) => {
     const map = mapRef.current;
     if (!map) return;
@@ -284,7 +322,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       });
       setActiveRouteIndex(index);
 
-      // Draw the route polyline with category-colored dashes
       const polyline = L.polyline(coords, {
         color: catColor,
         weight: 4,
@@ -295,7 +332,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       }).addTo(map);
       routePolylineRef.current = polyline;
 
-      // Start marker (direction circle on user location)
       const startIcon = L.divIcon({
         className: 'route-start-icon',
         html: `<svg width="16" height="16" viewBox="0 0 24 24" fill="${catColor}" stroke="#fff" stroke-width="2.5"><circle cx="12" cy="12" r="6"/></svg>`,
@@ -305,7 +341,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       const startMarker = L.marker([fromLat, fromLng], { icon: startIcon, interactive: false }).addTo(map);
       routeMarkerStartRef.current = startMarker;
 
-      // End marker (destination pin with number)
       const endIcon = L.divIcon({
         className: 'route-end-icon',
         html: `<div style="width:22px;height:22px;border-radius:50%;background:${catColor};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;">${index + 1}</div>`,
@@ -315,7 +350,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       const endMarker = L.marker([toLat, toLng], { icon: endIcon, interactive: false }).addTo(map);
       routeMarkerEndRef.current = endMarker;
 
-      // Fit bounds to show the entire route
       map.fitBounds(polyline.getBounds().pad(0.15), { maxZoom: 16 });
     } catch {
       // Route fetch failed silently
@@ -324,12 +358,11 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     }
   }, [clearRoute, activeCategory]);
 
-  // Clear route when category changes
   useEffect(() => {
     clearRoute();
   }, [activeCategory, clearRoute]);
 
-  // Update markers when category or user location changes
+  // Update markers when category or center changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !activeCategory || !center) return;
@@ -337,7 +370,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     const catLocations = locations;
     const color = CATEGORY_COLORS[activeCategory.id] || '#EF4444';
 
-    // Clear existing layers
     layerRef.current.forEach(l => l.remove());
     layerRef.current = [];
     popupMarkersRef.current = [];
@@ -345,7 +377,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     const mapCenter: [number, number] = [center[0], center[1]];
     const allPoints: L.LatLngExpression[] = [mapCenter];
 
-    // User location — accuracy radius circle
     if (sharedLocation?.accuracy) {
       const accuracyCircle = L.circle(mapCenter, {
         radius: sharedLocation.accuracy,
@@ -359,7 +390,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       layerRef.current.push(accuracyCircle);
     }
 
-    // User location — outer pulsing ring
     const userOuter = L.circleMarker(mapCenter, {
       radius: 16,
       fillColor: '#EF4444',
@@ -370,7 +400,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       className: 'user-location-pulse',
     }).addTo(map);
 
-    // User location — inner solid dot
     const userInner = L.circleMarker(mapCenter, {
       radius: 6,
       fillColor: '#EF4444',
@@ -379,10 +408,11 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       fillOpacity: 1,
     }).addTo(map);
 
+    const userLabelText = isDemoMode ? 'Demo Location' : 'Your Location';
     const userLabel = L.marker(mapCenter, {
       icon: L.divIcon({
         className: 'map-user-label',
-        html: `<span style="color:#F9FAFB;font-size:10px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;white-space:nowrap;">Your Location</span>`,
+        html: `<span style="color:#F9FAFB;font-size:10px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;white-space:nowrap;">${userLabelText}</span>`,
         iconSize: [30, 16],
         iconAnchor: [15, 20],
       }),
@@ -390,7 +420,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
 
     layerRef.current.push(userOuter, userInner, userLabel);
 
-    // Service location markers
     catLocations.forEach((loc, i) => {
       allPoints.push([loc.lat, loc.lng]);
 
@@ -440,7 +469,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       popupMarkersRef.current.push(outer);
     });
 
-    // Fit bounds to show all markers
     if (allPoints.length > 0) {
       const bounds = L.latLngBounds(allPoints);
       map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
@@ -467,10 +495,9 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
         <span style={styles.headerTitle} className="responsive-map-title">
           {activeCategory.icon} {activeCategory.label}
         </span>
-        {/* Auto-follow toggle */}
         <button
           onClick={() => setFollowUser(prev => !prev)}
-          title={followUser ? 'Auto-follow is on — map re-centers on your location' : 'Auto-follow is off — tap to re-center on your location'}
+          title={followUser ? 'Auto-follow is on' : 'Auto-follow is off'}
           style={{
             width: '32px',
             height: '32px',
@@ -505,7 +532,7 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
         </button>
       </div>
 
-      {/* Route info banner — shown when a route is active */}
+      {/* Route info banner */}
       {routeInfo && activeRouteIndex !== null && (
         <div style={{
           display: 'flex',
@@ -544,58 +571,42 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
         </div>
       )}
 
+      {/* Demo mode banner */}
+      {isDemoMode && (
+        <div style={styles.demoBanner}>
+          <span style={{ fontSize: '12px' }}>🧪</span>
+          <span style={styles.demoBannerText}>Showing demo locations for {DEFAULT_CITY} — allow GPS for live results</span>
+          {!sharedLocation && (
+            <button
+              onClick={() => { navigator.geolocation.getCurrentPosition(() => {}); }}
+              style={styles.demoRetryBtn}
+            >
+              Retry GPS
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Geolocation status banners */}
-      {geoStatus === 'locating' && (
+      {geoStatus === 'locating' && !isDemoMode && (
         <div style={styles.locationBanner}>
           <span className="location-pulsing-dot" />
           <span style={styles.locationBannerText}>Finding your location…</span>
         </div>
       )}
-      {geoStatus === 'denied' && !sharedLocation && (
+      {geoStatus === 'denied' && !sharedLocation && !isDemoMode && (
         <div style={{ ...styles.locationBanner, background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}>
           <span style={{ fontSize: '12px' }}>⚠️</span>
-          <span style={styles.locationBannerText}>Location access denied — enable in browser settings</span>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              marginLeft: 'auto',
-              padding: '3px 10px',
-              borderRadius: '6px',
-              border: '1px solid rgba(249,250,251,0.15)',
-              background: 'rgba(249,250,251,0.08)',
-              color: '#F9FAFB',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
-          >
-            Retry
-          </button>
+          <span style={styles.locationBannerText}>Location access denied — using demo location</span>
         </div>
       )}
-      {geoStatus === 'error' && !sharedLocation && (
+      {geoStatus === 'error' && !sharedLocation && !isDemoMode && (
         <div style={{ ...styles.locationBanner, background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)' }}>
           <span style={{ fontSize: '12px' }}>⚠️</span>
-          <span style={styles.locationBannerText}>Location unavailable — enable GPS and refresh</span>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              marginLeft: 'auto',
-              padding: '3px 10px',
-              borderRadius: '6px',
-              border: '1px solid rgba(249,250,251,0.15)',
-              background: 'rgba(249,250,251,0.08)',
-              color: '#F9FAFB',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
-          >
-            Retry
-          </button>
+          <span style={styles.locationBannerText}>Location unavailable — showing demo map</span>
         </div>
       )}
-      {geoStatus === 'ready' && sharedLocation && (
+      {geoStatus === 'ready' && sharedLocation && !isDemoMode && (
         <div style={{ ...styles.locationBanner, background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.15)' }}>
           <span style={{ fontSize: '12px' }}>📍</span>
           <span style={styles.locationBannerText}>
@@ -605,122 +616,123 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
         </div>
       )}
 
-      {/* GPS Loading State — shown while waiting for location */}
-      {!mapInitialized && (
-        <div style={styles.mapContainer} className="responsive-map-container">
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            gap: '16px',
-            background: 'var(--bg-primary)',
-          }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              border: '3px solid rgba(239,68,68,0.15)',
-              borderTopColor: '#EF4444',
-              animation: 'spin 1s linear infinite',
-            }} />
-            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+      {/* Loading state — shown while waiting for GPS or demo mode selection */}
+      {!center && (
+        <div style={styles.mapContainer}>
+          <div style={styles.loadingOverlay}>
+            <div style={styles.loadingSpinner} />
+            <span style={styles.loadingText}>
               {geoStatus === 'locating' ? 'Getting your current location…' : 'Waiting for GPS signal…'}
             </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', opacity: 0.6 }}>
-              Please allow location access when prompted
+            <span style={styles.loadingSubtext}>
+              Please allow location access when prompted, or use the demo option below
             </span>
+            <button
+              onClick={() => {
+                setUseDemoLocation(true);
+              }}
+              style={styles.demoButton}
+            >
+              🗺️ Show Demo Location ({DEFAULT_CITY})
+            </button>
           </div>
         </div>
       )}
 
-      {/* Leaflet Map container (rendered but hidden until initialized) */}
-      <div ref={mapContainerRef} style={{ ...styles.mapContainer, display: mapInitialized ? 'block' : 'none' }} className="responsive-map-container" />
+      {/* Leaflet Map container — always rendered with proper height */}
+      <div
+        ref={mapContainerRef}
+        style={{
+          ...styles.mapContainer,
+          display: center ? 'block' : 'none',
+        }}
+        className="responsive-map-container"
+      />
 
-      {/* Location cards — only shown when we have GPS and there are locations */}
-      <div ref={locationsRef} style={styles.locationsList} className="responsive-location-cards">
-        {locations.map((loc, i) => (
-          <div
-            key={i}
-            className={`roadsos-location-card ${activeRouteIndex === i ? 'roadsos-location-card-active' : ''}`}
-          >
-            <div className="roadsos-card-accent" style={{ background: color }} />
+      {/* Location cards */}
+      {center && (
+        <div ref={locationsRef} style={styles.locationsList} className="responsive-location-cards">
+          {locations.map((loc, i) => (
             <div
-              style={{ ...styles.locationNumber, background: color, cursor: 'pointer' }}
-              onClick={() => {
-                mapRef.current?.flyTo([loc.lat, loc.lng], 16, { duration: 0.8 });
-                popupMarkersRef.current[i]?.openPopup();
-              }}
+              key={i}
+              className={`roadsos-location-card ${activeRouteIndex === i ? 'roadsos-location-card-active' : ''}`}
             >
-              {i + 1}
+              <div className="roadsos-card-accent" style={{ background: color }} />
+              <div
+                style={{ ...styles.locationNumber, background: color, cursor: 'pointer' }}
+                onClick={() => {
+                  mapRef.current?.flyTo([loc.lat, loc.lng], 16, { duration: 0.8 });
+                  popupMarkersRef.current[i]?.openPopup();
+                }}
+              >
+                {i + 1}
+              </div>
+              <div
+                style={styles.locationInfo}
+                onClick={() => {
+                  mapRef.current?.flyTo([loc.lat, loc.lng], 16, { duration: 0.8 });
+                  popupMarkersRef.current[i]?.openPopup();
+                }}
+              >
+                <span style={styles.locationName}>{loc.name}</span>
+                <span style={styles.locationMeta}>
+                  <span style={{ fontSize: '10px', color }}>{loc.direction}</span> · {loc.distance} · {loc.eta}
+                </span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!center) return;
+                  if (activeRouteIndex === i) {
+                    clearRoute();
+                  } else {
+                    fetchRoute(center[0], center[1], loc.lat, loc.lng, i);
+                  }
+                }}
+                disabled={isRouting}
+                title={activeRouteIndex === i ? 'Clear route' : `Get directions to ${loc.name}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  border: activeRouteIndex === i
+                    ? `1px solid ${color}60`
+                    : '1px solid rgba(249,250,251,0.08)',
+                  background: activeRouteIndex === i
+                    ? `${color}22`
+                    : 'rgba(249,250,251,0.04)',
+                  color: activeRouteIndex === i ? color : 'var(--text-secondary)',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: isRouting ? 'wait' : 'pointer',
+                  outline: 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+                aria-label={activeRouteIndex === i ? 'Clear route' : `Get directions to ${loc.name}`}
+              >
+                {isRouting ? (
+                  <span style={{ fontSize: '12px' }}>⏳</span>
+                ) : activeRouteIndex === i ? (
+                  <span style={{ fontSize: '12px' }}>✕</span>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="22 12 18 8 14 12" />
+                    <polyline points="22 12 18 16 14 12" />
+                    <path d="M2 18h6a4 4 0 0 0 4-4V8" />
+                  </svg>
+                )}
+                <span>{activeRouteIndex === i ? 'Route' : 'Dir'}</span>
+              </button>
+              <span style={styles.locationStatus}>{loc.status}</span>
             </div>
-            <div
-              style={styles.locationInfo}
-              onClick={() => {
-                mapRef.current?.flyTo([loc.lat, loc.lng], 16, { duration: 0.8 });
-                popupMarkersRef.current[i]?.openPopup();
-              }}
-            >
-              <span style={styles.locationName}>{loc.name}</span>
-              <span style={styles.locationMeta}>
-                <span style={{ fontSize: '10px', color }}>{loc.direction}</span> · {loc.distance} · {loc.eta}
-              </span>
-            </div>
-            {/* Directions button — disabled until GPS resolves */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!center) return;
-                if (activeRouteIndex === i) {
-                  clearRoute();
-                } else {
-                  fetchRoute(center[0], center[1], loc.lat, loc.lng, i);
-                }
-              }}
-              disabled={isRouting}
-              title={activeRouteIndex === i ? 'Clear route' : `Get directions to ${loc.name}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '6px 10px',
-                borderRadius: '8px',
-                border: activeRouteIndex === i
-                  ? `1px solid ${color}60`
-                  : '1px solid rgba(249,250,251,0.08)',
-                background: activeRouteIndex === i
-                  ? `${color}22`
-                  : 'rgba(249,250,251,0.04)',
-                color: activeRouteIndex === i ? color : 'var(--text-secondary)',
-                fontSize: '11px',
-                fontWeight: '700',
-                cursor: isRouting ? 'wait' : 'pointer',
-                outline: 'none',
-                WebkitTapHighlightColor: 'transparent',
-                transition: 'all 0.2s ease',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-              aria-label={activeRouteIndex === i ? 'Clear route' : `Get directions to ${loc.name}`}
-            >
-              {isRouting ? (
-                <span style={{ fontSize: '12px' }}>⏳</span>
-              ) : activeRouteIndex === i ? (
-                <span style={{ fontSize: '12px' }}>✕</span>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="22 12 18 8 14 12" />
-                  <polyline points="22 12 18 16 14 12" />
-                  <path d="M2 18h6a4 4 0 0 0 4-4V8" />
-                </svg>
-              )}
-              <span>{activeRouteIndex === i ? 'Route' : 'Dir'}</span>
-            </button>
-            <span style={styles.locationStatus}>{loc.status}</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Interactive styles */}
       <style>{`
@@ -762,7 +774,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
           top: 4px;
           bottom: 4px;
         }
-        /* User location pulsing ring animation */
         .user-location-pulse {
           animation: user-pulse 2s ease-in-out infinite !important;
           transform-origin: center;
@@ -772,17 +783,10 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
           50%  { opacity: 0.5; }
           100% { opacity: 0.2; }
         }
-        /* Active route card highlight */
-        .roadsos-location-card-active {
-          box-shadow: 0 0 0 1px ${color} !important;
-          background: ${color}10 !important;
-        }
-        /* Route start/end marker icons */
         .route-start-icon, .route-end-icon {
           background: none !important;
           border: none !important;
         }
-        /* Live location pulsing dot in banner */
         .location-pulsing-dot {
           display: inline-block;
           width: 8px;
@@ -796,7 +800,6 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
           50%  { opacity: 0.4; transform: scale(0.6); }
           100% { opacity: 1; transform: scale(1); }
         }
-        /* Loading spinner */
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
@@ -846,8 +849,33 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '700',
     color: 'var(--text-primary)',
   },
-  headerSpacer: {
-    width: '32px',
+  demoBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 16px',
+    background: 'rgba(245, 158, 11, 0.12)',
+    borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+    zIndex: 1000,
+  },
+  demoBannerText: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: 'var(--text-primary)',
+    flex: 1,
+  },
+  demoRetryBtn: {
+    padding: '4px 10px',
+    borderRadius: '6px',
+    border: '1px solid rgba(249,250,251,0.15)',
+    background: 'rgba(249,250,251,0.08)',
+    color: '#F9FAFB',
+    fontSize: '11px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
   },
   locationBanner: {
     display: 'flex',
@@ -867,6 +895,50 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: '200px',
     zIndex: 1,
+  },
+  loadingOverlay: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    gap: '16px',
+    background: 'var(--bg-primary)',
+    padding: '32px 24px',
+  },
+  loadingSpinner: {
+    width: '48px',
+    height: '48px',
+    borderRadius: '50%',
+    border: '3px solid rgba(239,68,68,0.15)',
+    borderTopColor: '#EF4444',
+    animation: 'spin 1s linear infinite',
+  },
+  loadingText: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+  },
+  loadingSubtext: {
+    fontSize: '11px',
+    color: 'var(--text-secondary)',
+    opacity: 0.6,
+    textAlign: 'center',
+    maxWidth: '280px',
+  },
+  demoButton: {
+    marginTop: '8px',
+    padding: '12px 24px',
+    borderRadius: '12px',
+    border: '2px solid rgba(239,68,68,0.3)',
+    background: 'rgba(239,68,68,0.08)',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    transition: 'all 0.2s ease',
   },
   locationsList: {
     padding: '12px 16px',
@@ -897,12 +969,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
-  },      locationName: {
+  },
+  locationName: {
     fontSize: '14px',
     fontWeight: '700',
     color: 'var(--text-primary)',
     transition: 'color 0.2s ease',
-  },      locationMeta: {
+  },
+  locationMeta: {
     fontSize: '12px',
     color: 'var(--text-secondary)',
     fontWeight: '500',

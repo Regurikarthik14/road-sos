@@ -7,24 +7,76 @@ import { useGeolocation } from './hooks/useGeolocation';
 import { useCrashDetection } from './hooks/useCrashDetection';
 import { useTheme } from './hooks/useTheme';
 import type { AppView } from './types';
+import type { DispatchEntry, DispatchService } from './types';
+import { DEFAULT_DISPATCH_SERVICES } from './types';
 import './App.css';
 
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [isEmergencyTriggered, setIsEmergencyTriggered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDispatched, setIsDispatched] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const { userLocation, geoStatus } = useGeolocation();
   const { theme, toggleTheme } = useTheme();
   const [crashTriggered, setCrashTriggered] = useState(false);
   const [fallSignal, setFallSignal] = useState(0);
+  const dispatchTimersRef = useRef<number[]>([]);
+  const hasDispatchedRef = useRef(false);
+
+  // Dispatch state — each service gets its own status
+  const [dispatchEntries, setDispatchEntries] = useState<DispatchEntry[]>(DEFAULT_DISPATCH_SERVICES);
+
+  // Reset dispatch state
+  const resetDispatch = useCallback(() => {
+    hasDispatchedRef.current = false;
+    dispatchTimersRef.current.forEach(t => clearTimeout(t));
+    dispatchTimersRef.current = [];
+    setDispatchEntries(DEFAULT_DISPATCH_SERVICES);
+    setIsDispatched(false);
+  }, []);
+
+  // Dispatch to ALL nearest services with staggered timing (idempotent)
+  const dispatchToAllServices = useCallback(() => {
+    if (hasDispatchedRef.current) return;
+    hasDispatchedRef.current = true;
+    setIsDispatched(true);
+
+    // Dispatch each service with a staggered delay for realistic simulation
+    const services: { service: DispatchService; delay: number }[] = [
+      { service: 'trauma', delay: 0 },
+      { service: 'police', delay: 800 },
+      { service: 'fire', delay: 1600 },
+      { service: 'towing', delay: 2400 },
+      { service: 'puncture', delay: 3200 },
+    ];
+
+    services.forEach(({ service, delay }) => {
+      // Set to 'sending' immediately (or at half the delay)
+      const sendingTimer = window.setTimeout(() => {
+        setDispatchEntries(prev =>
+          prev.map(e => e.service === service ? { ...e, status: 'sending' } : e)
+        );
+      }, delay);
+
+      // Then set to 'sent' after a short sending duration
+      const sentTimer = window.setTimeout(() => {
+        setDispatchEntries(prev =>
+          prev.map(e => e.service === service ? { ...e, status: 'sent', timestamp: Date.now() } : e)
+        );
+      }, delay + 1200);
+
+      dispatchTimersRef.current.push(sendingTimer, sentTimer);
+    });
+  }, []);
 
   // Handle crash detection — auto-trigger failsafe with shorter countdown
   const handleCrashDetected = useCallback(() => {
     setCrashTriggered(true);
     setActiveView('failsafe');
     setIsEmergencyTriggered(true);
-  }, []);
+    dispatchToAllServices();
+  }, [dispatchToAllServices]);
 
   // Handle fall/impact detection — increment signal to start auto-SOS countdown on Dashboard
   const handleImpactDetected = useCallback(() => {
@@ -91,22 +143,24 @@ export default function App() {
   const handleSOSPress = useCallback(() => {
     setActiveView('failsafe');
     setIsEmergencyTriggered(true);
-  }, []);
+    dispatchToAllServices();
+  }, [dispatchToAllServices]);
 
   const handleCancelEmergency = useCallback(() => {
     setActiveView('dashboard');
     setIsEmergencyTriggered(false);
     setCrashTriggered(false);
+    resetDispatch();
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
     }
-  }, []);
+  }, [resetDispatch]);
 
   const handleEmergencyExpire = useCallback(() => {
-    // Dispatch logic would go here in production
-    // For now, just stay on failsafe with a dispatched state
+    // FailsafeUI countdown expired — begin dispatching
     setIsEmergencyTriggered(true);
-  }, []);
+    dispatchToAllServices();
+  }, [dispatchToAllServices]);
 
   const handleNavigate = useCallback((view: AppView) => {
     setActiveView(view);
@@ -114,11 +168,12 @@ export default function App() {
       setIsEmergencyTriggered(true);
     } else if (view === 'dashboard') {
       setIsEmergencyTriggered(false);
+      resetDispatch();
       if (audioContextRef.current) {
         audioContextRef.current.close().catch(() => {});
       }
     }
-  }, []);
+  }, [resetDispatch]);
 
   // Loading skeleton
   if (isLoading) {
@@ -169,6 +224,8 @@ export default function App() {
           onNavigate={handleNavigate}
           userLocation={userLocation}
           crashTriggered={crashTriggered}
+          dispatchEntries={dispatchEntries}
+          isDispatched={isDispatched}
         />
       )}
 
@@ -176,8 +233,6 @@ export default function App() {
       {activeView !== 'failsafe' && (
         <BottomNav activeView={activeView} onNavigate={handleNavigate} />
       )}
-
-
     </div>
   );
 }
