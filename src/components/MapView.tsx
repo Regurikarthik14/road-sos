@@ -409,7 +409,47 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       const endMarker = L.marker([toLat, toLng], { icon: endIcon, interactive: false, zIndexOffset: 1000 }).addTo(map);
       routeMarkerEndRef.current = endMarker;
 
+      // Fit map to show the full route
       map.fitBounds(outline.getBounds().pad(0.15), { maxZoom: 16 });
+
+      // === Route drawing animation (Google Maps-style reveal) ===
+      // Uses SVG stroke-dasharray/dashoffset to draw the line from start to end
+      requestAnimationFrame(() => {
+        const routeLayers = [
+          { layer: outline, delay: 0.2 },
+          { layer: glow, delay: 0.5 },
+          { layer: polyline, delay: 0.8 },
+        ];
+
+        routeLayers.forEach(({ layer, delay }) => {
+          const el = layer.getElement();
+          if (!el) return;
+          const pathEl = el.tagName === 'path' ? el : el.querySelector('path');
+          if (!pathEl) return;
+
+          try {
+            const length = pathEl.getTotalLength();
+
+            // Hide the line by offsetting the entire dash
+            pathEl.style.strokeDasharray = String(length);
+            pathEl.style.strokeDashoffset = String(length);
+
+            // Animate: draw from start to end with staggered delay
+            pathEl.style.animation = `route-draw ${1.2}s ease-out ${delay}s forwards`;
+
+            // Clean up dash properties after animation completes
+            const onAnimEnd = () => {
+              pathEl.style.strokeDasharray = '';
+              pathEl.style.strokeDashoffset = '';
+              pathEl.style.animation = '';
+              pathEl.removeEventListener('animationend', onAnimEnd);
+            };
+            pathEl.addEventListener('animationend', onAnimEnd);
+          } catch {
+            // getTotalLength may fail on some SVG renderers — skip animation
+          }
+        });
+      });
     } catch {
       // Route fetch failed silently
     } finally {
@@ -517,7 +557,7 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
           <div style="font-size:12px;color:#10B981;font-weight:600;margin-bottom:6px;">${loc.status}</div>
           <div style="display:flex;gap:6px;margin-top:4px;">
             <button onclick="window.__roadsosGetDir && window.__roadsosGetDir(${i})" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid ${color}50;background:${color}18;color:#F9FAFB;font-size:11px;font-weight:700;cursor:pointer;">
-              $              ${isActiveRoute ? '✕ Clear Route' : '🗺️ Directions'}
+              ${isActiveRoute ? '✕ Clear Route' : '🗺️ Directions'}
             </button>
           </div>
         </div>`,
@@ -867,6 +907,12 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
         .route-start-icon, .route-end-icon {
           background: none !important;
           border: none !important;
+        }
+        /* Route drawing animation — reveals path from start to end */
+        @keyframes route-draw {
+          to {
+            stroke-dashoffset: 0;
+          }
         }
         .location-pulsing-dot {
           display: inline-block;
