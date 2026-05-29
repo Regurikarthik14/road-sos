@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-      - roadsos-app/**
+      - src/**
+      - package.json
+      - vite.config.ts
+      - tsconfig*.json
       - .github/workflows/deploy.yml
   workflow_dispatch:
 
@@ -23,9 +26,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: roadsos-app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +35,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: roadsos-app/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -52,7 +51,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: roadsos-app/dist
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment

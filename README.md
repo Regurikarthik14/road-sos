@@ -95,7 +95,7 @@ The app features live geolocation tracking, an SOS emergency dispatch system wit
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/roadsos.git
-cd roadsos/roadsos-app
+cd road-sos
 
 # Install dependencies
 npm install
@@ -118,7 +118,6 @@ npm run preview
 ## 📁 Project Structure
 
 ```
-roadsos-app/
 ├── index.html                 # Entry HTML with meta tags & dark theme
 ├── package.json               # Dependencies & scripts
 ├── tsconfig.json              # TypeScript configuration
