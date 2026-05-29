@@ -142,6 +142,8 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
   const [useDemoLocation, setUseDemoLocation] = useState(false);
   const [demoAutoTriggered, setDemoAutoTriggered] = useState(false);
   const routePolylineRef = useRef<L.Polyline | null>(null);
+  const routeOutlineRef = useRef<L.Polyline | null>(null);
+  const routeGlowRef = useRef<L.Polyline | null>(null);
   const routeMarkerStartRef = useRef<L.Marker | null>(null);
   const routeMarkerEndRef = useRef<L.Marker | null>(null);
 
@@ -273,6 +275,14 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
   }, [activeCategory]);
 
   const clearRoute = useCallback(() => {
+    if (routeOutlineRef.current) {
+      routeOutlineRef.current.remove();
+      routeOutlineRef.current = null;
+    }
+    if (routeGlowRef.current) {
+      routeGlowRef.current.remove();
+      routeGlowRef.current = null;
+    }
     if (routePolylineRef.current) {
       routePolylineRef.current.remove();
       routePolylineRef.current = null;
@@ -322,35 +332,84 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       });
       setActiveRouteIndex(index);
 
-      const polyline = L.polyline(coords, {
+      // === Google Maps-style route line: outer glow + inner solid line ===
+
+      // Outer glow/outline layer (thicker, semi-transparent)
+      const outline = L.polyline(coords, {
         color: catColor,
-        weight: 4,
-        opacity: 0.85,
-        dashArray: '12, 8',
+        weight: 9,
+        opacity: 0.25,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false,
+      }).addTo(map);
+      routeOutlineRef.current = outline;
+
+      // Middle glow layer
+      const glow = L.polyline(coords, {
+        color: catColor,
+        weight: 6,
+        opacity: 0.4,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false,
+      }).addTo(map);
+      routeGlowRef.current = glow;
+
+      // Inner solid line (the actual visible road path) — pure white like Google Maps
+      const polyline = L.polyline(coords, {
+        color: '#fff',
+        weight: 3.5,
+        opacity: 1,
         lineCap: 'round',
         lineJoin: 'round',
       }).addTo(map);
       routePolylineRef.current = polyline;
 
+      // === Google Maps-style start marker (teardrop pin) ===
+      const startSvg = `<svg width="28" height="40" viewBox="0 0 28 40" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="start-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <path d="M14 0C6.3 0 0 6.3 0 14c0 8 5.5 14.5 14 26C22.5 28.5 28 22 28 14 28 6.3 21.7 0 14 0z" fill="#111827" filter="url(#start-shadow)"/>
+        <path d="M14 2C7.4 2 2 7.4 2 14c0 7 4.8 12.8 12 23.2C21.2 26.8 26 21 26 14 26 7.4 20.6 2 14 2z" fill="${catColor}"/>
+        <circle cx="14" cy="13" r="5" fill="#fff" opacity="0.95"/>
+      </svg>`;
+
       const startIcon = L.divIcon({
         className: 'route-start-icon',
-        html: `<svg width="16" height="16" viewBox="0 0 24 24" fill="${catColor}" stroke="#fff" stroke-width="2.5"><circle cx="12" cy="12" r="6"/></svg>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        html: startSvg,
+        iconSize: [28, 40],
+        iconAnchor: [14, 40],
       });
-      const startMarker = L.marker([fromLat, fromLng], { icon: startIcon, interactive: false }).addTo(map);
+      const startMarker = L.marker([fromLat, fromLng], { icon: startIcon, interactive: false, zIndexOffset: 1000 }).addTo(map);
       routeMarkerStartRef.current = startMarker;
+
+      // === Google Maps-style destination marker (inverted teardrop with number) ===
+      const endSvg = `<svg width="30" height="42" viewBox="0 0 30 42" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="end-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <path d="M15 0C6.7 0 0 6.7 0 15c0 8.5 5.9 15.5 15 27C24.1 30.5 30 23.5 30 15 30 6.7 23.3 0 15 0z" fill="#111827" filter="url(#end-shadow)"/>
+        <path d="M15 2C8.4 2 3 7.4 3 15c0 7.5 5.2 13.7 12 24.2C21.8 28.7 27 22.5 27 15 27 7.4 21.6 2 15 2z" fill="${catColor}"/>
+        <circle cx="15" cy="14" r="6.5" fill="#fff" opacity="0.95"/>
+        <text x="15" y="16.5" text-anchor="middle" fill="${catColor}" font-size="10" font-weight="800">${index + 1}</text>
+      </svg>`;
 
       const endIcon = L.divIcon({
         className: 'route-end-icon',
-        html: `<div style="width:22px;height:22px;border-radius:50%;background:${catColor};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;">${index + 1}</div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
+        html: endSvg,
+        iconSize: [30, 42],
+        iconAnchor: [15, 42],
       });
-      const endMarker = L.marker([toLat, toLng], { icon: endIcon, interactive: false }).addTo(map);
+      const endMarker = L.marker([toLat, toLng], { icon: endIcon, interactive: false, zIndexOffset: 1000 }).addTo(map);
       routeMarkerEndRef.current = endMarker;
 
-      map.fitBounds(polyline.getBounds().pad(0.15), { maxZoom: 16 });
+      map.fitBounds(outline.getBounds().pad(0.15), { maxZoom: 16 });
     } catch {
       // Route fetch failed silently
     } finally {
@@ -458,7 +517,7 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
           <div style="font-size:12px;color:#10B981;font-weight:600;margin-bottom:6px;">${loc.status}</div>
           <div style="display:flex;gap:6px;margin-top:4px;">
             <button onclick="window.__roadsosGetDir && window.__roadsosGetDir(${i})" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid ${color}50;background:${color}18;color:#F9FAFB;font-size:11px;font-weight:700;cursor:pointer;">
-              ${isActiveRoute ? '✕ Clear Route' : '🗺️ Show Directions'}
+              $              ${isActiveRoute ? '✕ Clear Route' : '🗺️ Directions'}
             </button>
           </div>
         </div>`,
@@ -532,41 +591,63 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
         </button>
       </div>
 
-      {/* Route info banner */}
+      {/* Google Maps-style route info banner */}
       {routeInfo && activeRouteIndex !== null && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          padding: '8px 16px',
-          background: `${color}18`,
-          borderBottom: `1px solid ${color}30`,
+          gap: '12px',
+          padding: '10px 16px',
+          background: `linear-gradient(135deg, ${color} 0%, #000000 350%)`,
+          borderBottom: `1px solid ${color}60`,
           zIndex: 1000,
+          boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
         }}>
-          <span style={{ fontSize: '14px' }}>🗺️</span>
-          <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', flex: 1 }}>
-            Route to {locations[activeRouteIndex]?.name || 'destination'}
-          </span>
-          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', fontFamily: 'var(--font-mono)' }}>
-            {routeInfo.distance} · {routeInfo.duration}
-          </span>
+          {/* ETA — big and bold like Google Maps */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <span style={{ fontSize: '22px', fontWeight: '800', color: '#fff', lineHeight: 1.2, letterSpacing: '-0.5px' }}>
+              {routeInfo.duration}
+            </span>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)', fontWeight: '500' }}>
+              {routeInfo.distance} · {locations[activeRouteIndex]?.direction || ''}
+            </span>
+          </div>
+
+          {/* Destination name */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
+              {locations[activeRouteIndex]?.name || 'Destination'}
+            </span>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>
+              {locations[activeRouteIndex]?.status || ''}
+            </span>
+          </div>
+
+          {/* Clear button */}
           <button
             onClick={clearRoute}
             style={{
-              padding: '4px 10px',
-              borderRadius: '6px',
-              border: '1px solid rgba(249,250,251,0.12)',
-              background: 'rgba(249,250,251,0.06)',
-              color: 'var(--text-secondary)',
-              fontSize: '11px',
-              fontWeight: '600',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: '2px solid rgba(255,255,255,0.3)',
+              background: 'rgba(0,0,0,0.2)',
+              color: '#fff',
+              fontSize: '14px',
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               outline: 'none',
               WebkitTapHighlightColor: 'transparent',
+              flexShrink: 0,
+              transition: 'all 0.2s ease',
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
             }}
             aria-label="Clear route"
           >
-            ✕ Clear
+            ✕
           </button>
         </div>
       )}
