@@ -8,8 +8,23 @@ interface CrashDetectionOptions {
 }
 
 // Impact threshold in m/s². Normal gravity is ~9.8.
-// A sudden spike above 20 m/s² (~2g) indicates a hard impact/drop.
-const IMPACT_THRESHOLD = 20;
+// - Casual phone shaking: 10-20 m/s²
+// - Jogging with phone: 15-30 m/s²
+// - Dropping phone from pocket: 40-80 m/s²
+// - Car crash: 80-200+ m/s² (at 30 km/h ~100 m/s²)
+// Set high enough to ignore hard shaking, low enough to catch real crashes.
+const IMPACT_THRESHOLD = 50;
+
+// Minimum time (ms) between impact triggers to debounce vibration noise
+const IMPACT_DEBOUNCE_MS = 3000;
+
+// How many impacts needed within the window to auto-trigger SOS countdown
+// Real crashes produce many high-G impacts in rapid succession (tumbling, rolling).
+// Requiring 3 makes accidental triggering from shaking virtually impossible.
+const IMPACTS_REQUIRED = 3;
+
+// Time window (ms) to count multiple impacts for crash confirmation
+const IMPACT_WINDOW_MS = 5000;
 
 // Audio level threshold (0–255 from AnalyserNode). Normal speech ~30-60, loud noise > 150.
 const LOUD_THRESHOLD = 150;
@@ -34,6 +49,9 @@ export function useCrashDetection({ onCrashDetected, onImpactDetected }: CrashDe
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const motionHandlerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
+  // Track impact timestamps for multi-impact detection
+  const impactHistoryRef = useRef<number[]>([]);
+  const lastImpactFiredRef = useRef<number>(0);
 
   // Schedule a ref to expire after the co-trigger window passes
   const scheduleExpiry = (ref: React.MutableRefObject<number | null>) => {
@@ -60,6 +78,8 @@ export function useCrashDetection({ onCrashDetected, onImpactDetected }: CrashDe
     }
     analyserRef.current = null;
     dataArrayRef.current = null;
+    impactHistoryRef.current = [];
+    lastImpactFiredRef.current = 0;
   }, []);
 
   // Check if both conditions met within the window
@@ -97,12 +117,28 @@ export function useCrashDetection({ onCrashDetected, onImpactDetected }: CrashDe
       const magnitude = Math.sqrt(x * x + y * y + z * z);
 
       if (magnitude > IMPACT_THRESHOLD) {
-        impactTimeRef.current = Date.now();
+        const now = Date.now();
+        impactTimeRef.current = now;
         scheduleExpiry(impactTimeRef);
         setImpactDetected(true);
         checkCoTrigger();
-        // Fire fall/impact detected callback for auto-SOS countdown
-        onImpactDetected?.();
+
+        // Multi-impact detection: track hits within a sliding window
+        // This filters out single bumps from real crash patterns.
+        impactHistoryRef.current = [
+          ...impactHistoryRef.current.filter(t => now - t < IMPACT_WINDOW_MS),
+          now,
+        ];
+
+        // Debounce: only fire onImpactDetected if enough time has passed since last trigger
+        // AND we have enough impacts in the window to confirm a real crash
+        if (now - lastImpactFiredRef.current > IMPACT_DEBOUNCE_MS) {
+          if (impactHistoryRef.current.length >= IMPACTS_REQUIRED) {
+            lastImpactFiredRef.current = now;
+            // Fire fall/impact detected callback for auto-SOS countdown
+            onImpactDetected?.();
+          }
+        }
       }
     };
 
