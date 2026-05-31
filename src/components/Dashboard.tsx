@@ -332,7 +332,15 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection, use
         <HardwareStatusPanel />
 
         {/* Fire Detection Panel */}
-        <FireDetection />
+        <FireDetection onFireDetected={() => {
+          // High pressure / fire detected — start auto-SOS countdown
+          if (autoSOSCountdown === null) {
+            setAutoSOSCountdown(10);
+            if (navigator.vibrate) {
+              navigator.vibrate([100, 100, 100, 100, 200]);
+            }
+          }
+        }} />
 
         {/* Crash Detection Banner */}
         <CrashDetectBanner

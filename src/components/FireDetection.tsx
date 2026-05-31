@@ -1,8 +1,12 @@
 import { useFireDetection } from '../hooks/useFireDetection';
 import type { FireStatus } from '../hooks/useFireDetection';
 
-export default function FireDetection() {
-  const { temperature, fireStatus, dispatchStatus, fireEngineEta, ambulanceEta, resetFireAlert } = useFireDetection();
+interface FireDetectionProps {
+  onFireDetected?: () => void;
+}
+
+export default function FireDetection({ onFireDetected }: FireDetectionProps = {}) {
+  const { temperature, fireStatus, dispatchStatus, fireEngineEta, ambulanceEta, resetFireAlert } = useFireDetection({ onFireDetected });
 
   const getStatusColor = (status: FireStatus) => {
     switch (status) {
