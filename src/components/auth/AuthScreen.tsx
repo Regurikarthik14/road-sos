@@ -1,4 +1,4 @@
-import { useState, useCallback, type FormEvent, useEffect, useRef } from 'react';
+import { useState, useCallback, type FormEvent, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 // =========================================================
@@ -9,14 +9,8 @@ export default function AuthScreen() {
   const {
     authStep,
     setAuthStep,
-    login,
-    registerWithPhone,
-    verifyOTP,
-    createPassword,
-    forgotPassword,
     error,
     successMessage,
-    isProcessing,
     clearError,
   } = useAuth();
 
@@ -199,10 +193,10 @@ function LoginView() {
 // =========================================================
 
 function RegisterView() {
-  const { sendOtp, isProcessing, setTempData, setAuthStep } = useAuth();
+  const { sendOtp, isProcessing, setAuthStep } = useAuth();
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [countryCode, setCountryCode] = useState('1');
+  const countryCode = '1';
   const [localError, setLocalError] = useState('');
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
@@ -302,7 +296,7 @@ function RegisterView() {
 // =========================================================
 
 function OTPVerifyView() {
-  const { verifyOtp, isProcessing, setAuthStep, tempData, setTempData, sendOtp } = useAuth();
+  const { verifyOtp, isProcessing, setAuthStep, tempData, sendOtp } = useAuth();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
