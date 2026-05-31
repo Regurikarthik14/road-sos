@@ -69,3 +69,47 @@ export const DEFAULT_DISPATCH_SERVICES: DispatchEntry[] = [
   { service: 'police', label: 'Police', icon: '👮', status: 'pending' },
   { service: 'ambulance', label: 'Ambulance', icon: '🚑', status: 'pending' },
 ];
+
+// =========================================================
+// Auth Types
+// =========================================================
+
+export type AuthStep =
+  | 'welcome'
+  | 'login'
+  | 'register'
+  | 'otp-verify'
+  | 'create-password'
+  | 'forgot-password'
+  | 'reset-sent'
+  | 'reset-password';
+
+export interface TempRegistrationData {
+  email: string;
+  phone: string;
+  verificationId?: string;
+  displayName?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  uniqueId: string;
+  email: string;
+  phone: string;
+  displayName: string;
+  medicalInfo: {
+    bloodType: string;
+    emergencyContact: string;
+    allergies: string;
+    medications: string;
+  };
+  createdAt: number;
+  lastLoginAt: number;
+}
+
+export function generateUniqueId(): string {
+  // 12-digit numeric ID: timestamp suffix (6 digits) + random (6 digits)
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(100000 + Math.random() * 900000).toString();
+  return timestamp + random;
+}

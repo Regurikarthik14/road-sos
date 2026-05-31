@@ -3,15 +3,18 @@ import Dashboard from './components/Dashboard';
 import ChatCanvas from './components/ChatCanvas';
 import FailsafeUI from './components/FailsafeUI';
 import BottomNav from './components/BottomNav';
+import AuthScreen from './components/auth/AuthScreen';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useCrashDetection } from './hooks/useCrashDetection';
 import { useTheme } from './hooks/useTheme';
+import { useAuth } from './context/AuthContext';
 import type { AppView } from './types';
 import type { DispatchEntry, DispatchService } from './types';
 import { DEFAULT_DISPATCH_SERVICES } from './types';
 import './App.css';
 
 export default function App() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [isEmergencyTriggered, setIsEmergencyTriggered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -169,6 +172,30 @@ export default function App() {
       }
     }
   }, [resetDispatch]);
+
+  // Auth loading skeleton
+  if (authLoading) {
+    return (
+      <div style={styles.loadingContainer}>
+        <div style={styles.loadingContent}>
+          <div style={styles.skeletonLogo}>
+            <div className="skeleton" style={{ width: '56px', height: '56px', borderRadius: '16px' }} />
+          </div>
+          <div className="skeleton" style={{ width: '120px', height: '24px', borderRadius: '8px', marginTop: '16px' }} />
+          <div className="skeleton" style={{ width: '200px', height: '14px', borderRadius: '8px', marginTop: '12px' }} />
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth screen if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div style={styles.appContainer}>
+        <AuthScreen />
+      </div>
+    );
+  }
 
   // Loading skeleton
   if (isLoading) {

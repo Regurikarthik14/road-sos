@@ -239,3 +239,42 @@ html, body {
   border-radius: 8px;
   opacity: 0.08;
 }
+
+/* =========================================================
+   Auth Screen Styles
+   ========================================================= */
+
+/* OTP digit input focus */
+input[aria-label*="Digit"]:focus {
+  border-color: var(--action-alert) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+  transform: translateY(-1px);
+  background: var(--bg-tertiary);
+}
+
+/* Auth form input focus */
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input:not([type]) {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="tel"]:focus {
+  border-color: var(--action-alert) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+/* Auth view transitions */
+@keyframes auth-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
