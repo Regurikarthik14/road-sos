@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { CategoryInfo } from '../types';
@@ -262,8 +262,12 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
 
   useEffect(() => { injectPopupStyles(); }, []);
 
-  // Resolved center for generating locations
-  const center = effectiveCenter;
+  // Resolved center for generating locations — memoized to avoid new array reference on every render
+  const center = useMemo(() => effectiveCenter, [
+    sharedLocation?.lat,
+    sharedLocation?.lng,
+    isDemoMode,
+  ]);
 
   const locations = activeCategory && center
     ? (generateLocations(center[0], center[1], isDemoMode ? DEFAULT_CITY : 'Your Location')[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
