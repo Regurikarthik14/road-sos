@@ -21,12 +21,10 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Start server
-async function start() {
-  await connectDB();
-  app.listen(PORT, () => {
-    console.log(`🚀 Raksha server running on port ${PORT}`);
-  });
-}
+// Start server (don't block on DB connection)
+app.listen(PORT, () => {
+  console.log(`🚀 Raksha server running on port ${PORT}`);
+});
 
-start().catch(console.error);
+// Connect to DB in the background
+connectDB().catch(console.error);

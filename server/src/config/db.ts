@@ -14,7 +14,10 @@ export async function connectDB(): Promise<void> {
   }
 
   try {
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
     _isConnected = true;
     console.log('✅ Connected to MongoDB');
   } catch (err) {
