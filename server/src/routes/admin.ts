@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { getAllUsers, getUserById } from '../controllers/adminController.js';
+import { listUsers, getUserById } from '../controllers/adminController.js';
 
 const router = Router();
 
@@ -23,7 +23,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
-router.get('/users', requireAdmin, getAllUsers);
+router.get('/users', requireAdmin, listUsers);
 router.get('/users/:id', requireAdmin, getUserById);
 
 export default router;
