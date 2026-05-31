@@ -135,10 +135,13 @@ export default function ChatCanvas({ theme, onToggleTheme, onBack }: ChatCanvasP
     hasApiKey,
   } = useGemini();
 
-  const { voiceStatus, voicePitch, voiceRate, setVoicePitch, setVoiceRate, startListening, stopListening, speak } = useVoice({
+  const { voiceStatus, voiceError, voicePitch, voiceRate, setVoicePitch, setVoiceRate, startListening, stopListening, speak, clearError } = useVoice({
     onResult: (text) => {
-      sendMessage(text);
+      // Put recognized speech in the input so user can review/edit before sending
+      setInputValue(text);
       setIsVoiceActive(false);
+      // Focus input so user can press Enter to send
+      setTimeout(() => inputRef.current?.focus(), 100);
     },
     onError: (error) => {
       console.warn('Voice error:', error);
@@ -426,6 +429,8 @@ export default function ChatCanvas({ theme, onToggleTheme, onBack }: ChatCanvasP
       stopListening();
       setIsVoiceActive(false);
     } else {
+      // Auto-dismiss any previous voice error when user taps mic again
+      if (voiceError) clearError();
       setIsVoiceActive(true);
       startListening();
     }
@@ -691,6 +696,21 @@ export default function ChatCanvas({ theme, onToggleTheme, onBack }: ChatCanvasP
             <span style={styles.waveLabel}>
               {voiceStatus === 'listening' ? 'Listening...' : 'Raksha Speaking...'}
             </span>
+          </div>
+        )}
+
+        {/* Voice Error Message */}
+        {voiceError && !isVoiceActive && (
+          <div style={styles.voiceError}>
+            <span style={styles.voiceErrorIcon}>⚠️</span>
+            <span style={styles.voiceErrorText}>{voiceError}</span>
+            <button
+              onClick={() => { clearError(); setIsVoiceActive(false); }}
+              style={styles.voiceErrorDismiss}
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -1024,6 +1044,44 @@ const styles: Record<string, React.CSSProperties> = {
     animation: 'cursor-blink 1s step-end infinite',
     fontWeight: '300',
     marginLeft: '1px',
+  },
+  voiceError: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+    padding: '12px 16px',
+    background: 'rgba(239,68,68,0.1)',
+    border: '1px solid rgba(239,68,68,0.2)',
+    borderRadius: '12px',
+    animation: 'fade-in 0.3s ease',
+  },
+  voiceErrorIcon: {
+    fontSize: '14px',
+    flexShrink: 0,
+    marginTop: '1px',
+  },
+  voiceErrorText: {
+    flex: 1,
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#EF4444',
+    lineHeight: 1.4,
+  },
+  voiceErrorDismiss: {
+    width: '22px',
+    height: '22px',
+    borderRadius: '50%',
+    border: 'none',
+    background: 'rgba(239,68,68,0.15)',
+    color: '#EF4444',
+    fontSize: '10px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    outline: 'none',
+    transition: 'all 0.2s ease',
   },
   backButton: {
     width: '32px',
