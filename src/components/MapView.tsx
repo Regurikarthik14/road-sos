@@ -207,6 +207,7 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
   const routeMarkerStartRef = useRef<L.Marker | null>(null);
   const routeMarkerEndRef = useRef<L.Marker | null>(null);
   const trafficSegmentsRef = useRef<L.Polyline[]>([]);
+  const hasFittedBoundsRef = useRef(false);
 
   // Determine effective center: real GPS, fallback demo, or wait
   const isDemoMode = useDemoLocation || (!sharedLocation && demoAutoTriggered);
@@ -558,6 +559,8 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
 
   useEffect(() => {
     clearRoute();
+    // Reset bounds fitting flag so the next setup fits bounds for the new category
+    hasFittedBoundsRef.current = false;
   }, [activeCategory, clearRoute]);
 
   // Update markers when category or center changes
@@ -667,9 +670,14 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       popupMarkersRef.current.push(outer);
     });
 
-    if (allPoints.length > 0) {
-      const bounds = L.latLngBounds(allPoints);
-      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+    // Only fit bounds the first time for a given category — prevents auto-zooming
+    // on every GPS location update (which was causing the map to zoom in/out repeatedly)
+    if (!hasFittedBoundsRef.current) {
+      hasFittedBoundsRef.current = true;
+      if (allPoints.length > 0) {
+        const bounds = L.latLngBounds(allPoints);
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+      }
     }
 
     return () => {
