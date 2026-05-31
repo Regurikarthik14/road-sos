@@ -43,3 +43,5 @@ nul
 # Misc
 *.pem
 *.tsbuildinfo
+
+.vercel
