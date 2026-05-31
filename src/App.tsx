@@ -45,6 +45,7 @@ export default function App() {
     // Dispatch each service with staggered timing
     const services: { service: DispatchService; delay: number }[] = [
       { service: 'trauma', delay: 0 },
+      { service: 'police', delay: 400 },
       { service: 'ambulance', delay: 800 },
     ];
 
