@@ -204,19 +204,30 @@ export async function login(req: Request, res: Response) {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' });
+      res.status(400).json({ error: 'Email/phone and password are required' });
       return;
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Detect whether the input is an email or phone number
+    const isEmail = email.includes('@');
+    let user;
+
+    if (isEmail) {
+      user = await User.findOne({ email: email.toLowerCase().trim() });
+    } else {
+      // Clean phone: strip everything except digits, prepend +
+      const cleanPhone = '+' + email.replace(/[^0-9]/g, '');
+      user = await User.findOne({ phone: cleanPhone });
+    }
+
     if (!user) {
-      res.status(401).json({ error: 'Invalid email or password' });
+      res.status(401).json({ error: 'Invalid email/phone or password' });
       return;
     }
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      res.status(401).json({ error: 'Invalid email or password' });
+      res.status(401).json({ error: 'Invalid email/phone or password' });
       return;
     }
 

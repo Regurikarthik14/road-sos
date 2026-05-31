@@ -101,19 +101,22 @@ function WelcomeView({ onGetStarted, onLogin }: { onGetStarted: () => void; onLo
 
 function LoginView() {
   const { login, isProcessing, setAuthStep } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    if (!identifier.trim() || !password) return;
     try {
-      await login(email.trim(), password);
+      await login(identifier.trim(), password);
     } catch {
       // Error is handled in AuthContext
     }
-  }, [email, password, login]);
+  }, [identifier, password, login]);
+
+  const isEmail = identifier.includes('@');
+  const inputType = isEmail || !identifier ? 'email' : 'tel';
 
   return (
     <div style={styles.viewContainer}>
@@ -125,17 +128,20 @@ function LoginView() {
 
       <form onSubmit={handleSubmit} style={styles.form}>
         <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Email</label>
+          <label style={styles.inputLabel}>Email or Phone</label>
           <input
             style={styles.input}
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
+            type={inputType}
+            placeholder="your@email.com or phone number"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            autoComplete="username"
             autoFocus
             required
           />
+          {!isEmail && identifier.length > 0 && identifier.length < 5 && (
+            <span style={styles.inputHint}>Enter your full phone number with country code (e.g. +1XXXXXXXXXX)</span>
+          )}
         </div>
 
         <div style={styles.inputGroup}>

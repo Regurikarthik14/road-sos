@@ -25,7 +25,7 @@ interface AuthContextValue {
   setTempData: (data: TempRegistrationData) => void;
 
   // Auth operations
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   sendOtp: (email: string, phone: string) => Promise<void>;
   verifyOtp: (code: string) => Promise<boolean>;
   createPassword: (password: string) => Promise<void>;
@@ -121,18 +121,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // =========================================================
   // Login
   // =========================================================
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     setIsProcessing(true);
     setError(null);
     try {
-      const { user: profile } = await api.login(email, password);
+      const { user: profile } = await api.login(identifier, password);
       setUser(profile);
       setIsAuthenticated(true);
       setSuccessMessage('Welcome back!');
     } catch (err: any) {
       const msg = err.message || 'Login failed. Please try again.';
-      if (msg.includes('Invalid email or password')) {
-        setError('Invalid email or password. Please try again.');
+      if (msg.includes('Invalid email') || msg.includes('Invalid email/phone')) {
+        setError('Invalid email/phone or password. Please try again.');
       } else if (msg.includes('Too many')) {
         setError('Too many attempts. Please try again later.');
       } else {
