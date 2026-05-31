@@ -13,14 +13,61 @@ interface FireState {
 
 const TEMP_NORMAL_MAX = 35;
 const TEMP_FIRE_THRESHOLD = 50;
+const AMBIENT_BASELINE = 28;
 
 interface UseFireDetectionOptions {
   onFireDetected?: () => void;
 }
 
+// Estimate device temperature based on real conditions
+function estimateTemperature(
+  batteryCharging: boolean,
+  batteryLevel: number,
+  memoryPressure: number,
+  prevTemp: number
+): number {
+  // Base temp starts at ambient and drifts based on device conditions
+  let targetTemp = AMBIENT_BASELINE;
+
+  // Battery charging generates significant heat
+  if (batteryCharging) {
+    targetTemp += 3 + (1 - batteryLevel) * 4; // More heat when battery is low + charging
+  }
+
+  // Memory pressure as proxy for CPU load
+  targetTemp += memoryPressure * 6; // 0-1 scale -> up to 6°C added
+
+  // Small natural variance (±0.5°C) for realism
+  const variance = (Math.random() - 0.5) * 1.0;
+
+  // Smooth transition toward target (avoids sudden jumps)
+  const smoothed = prevTemp + (targetTemp - prevTemp) * 0.15 + variance;
+
+  return Math.round(Math.max(18, Math.min(60, smoothed)) * 10) / 10;
+}
+
+function getMemoryPressure(): number {
+  try {
+    const perfMemory = (performance as unknown as Record<string, unknown>).memory as
+      { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } | undefined;
+    if (perfMemory && perfMemory.totalJSHeapSize > 0) {
+      return perfMemory.usedJSHeapSize / perfMemory.totalJSHeapSize;
+    }
+  } catch {
+    // Memory API not available
+  }
+  // Fallback: use deviceMemory as a rough proxy
+  const deviceMem = (navigator as unknown as Record<string, unknown>).deviceMemory as number | undefined;
+  if (deviceMem) {
+    // Lower memory = higher pressure (inverse relationship)
+    return Math.max(0, Math.min(1, 1 - (deviceMem - 2) / 6));
+  }
+  return 0.3; // Default moderate pressure
+}
+
 export function useFireDetection({ onFireDetected }: UseFireDetectionOptions = {}) {
   const [state, setState] = useState<FireState>({
-    temperature: 28,
+    temperature: AMBIENT_BASELINE,
     fireStatus: 'normal',
     dispatchStatus: 'idle',
     fireEngineEta: '',
@@ -31,23 +78,46 @@ export function useFireDetection({ onFireDetected }: UseFireDetectionOptions = {
   const onFireDetectedRef = useRef(onFireDetected);
   onFireDetectedRef.current = onFireDetected;
 
-  // Simulate real-time temperature readings
+  // Track real battery status
+  const batteryRef = useRef<{ charging: boolean; level: number }>({ charging: false, level: 1 });
+
+  useEffect(() => {
+    let battery: { onchargingchange?: () => void; onlevelchange?: () => void; charging: boolean; level: number } | null = null;
+
+    async function initBattery() {
+      try {
+        const b = await (navigator as unknown as { getBattery: () => Promise<{ charging: boolean; level: number; onchargingchange?: () => void; onlevelchange?: () => void }> }).getBattery();
+        battery = b;
+        batteryRef.current = { charging: b.charging, level: b.level };
+
+        b.onchargingchange = () => {
+          batteryRef.current = { ...batteryRef.current, charging: b.charging };
+        };
+        b.onlevelchange = () => {
+          batteryRef.current = { ...batteryRef.current, level: b.level };
+        };
+      } catch {
+        // Battery API not available — use defaults
+      }
+    }
+
+    initBattery();
+
+    return () => {
+      if (battery) {
+        (battery as { onchargingchange?: null; onlevelchange?: null }).onchargingchange = null;
+        (battery as { onchargingchange?: null; onlevelchange?: null }).onlevelchange = null;
+      }
+    };
+  }, []);
+
+  // Derive temperature from real device conditions every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setState(prev => {
-        const variance = (Math.random() - 0.5) * 3;
-        const spikeChance = Math.random();
-
-        let newTemp: number;
-        if (spikeChance < 0.02) {
-          newTemp = prev.temperature + 15 + Math.random() * 20;
-        } else if (spikeChance < 0.05) {
-          newTemp = prev.temperature + 5 + Math.random() * 8;
-        } else {
-          newTemp = Math.max(15, Math.min(60, prev.temperature + variance));
-        }
-
-        newTemp = Math.round(newTemp * 10) / 10;
+        const { charging, level } = batteryRef.current;
+        const memPressure = getMemoryPressure();
+        const newTemp = estimateTemperature(charging, level, memPressure, prev.temperature);
 
         let fireStatus: FireStatus = 'normal';
         if (newTemp > TEMP_FIRE_THRESHOLD) fireStatus = 'fire-alert';
@@ -73,7 +143,7 @@ export function useFireDetection({ onFireDetected }: UseFireDetectionOptions = {
 
         return { ...prev, temperature: newTemp, fireStatus };
       });
-    }, 2000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, []);
