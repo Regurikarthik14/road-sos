@@ -1,8 +1,17 @@
 import jwt from 'jsonwebtoken';
 import { type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { User } from '../models/User.js';
-import { Otp } from '../models/Otp.js';
+import {
+  findUserByEmail,
+  findUserByPhone,
+  findUserById,
+  findUserByEmailOrPhone,
+  findOtp,
+  createUser,
+  createOtp,
+  deleteOtp,
+  updateUser,
+} from '../config/jsonDb.js';
 import { sendSmsOtp } from '../services/sms.js';
 import { sendResetEmail, sendEmailOtp } from '../services/email.js';
 import { generateOtpCode, generateUniqueId, generateResetToken } from '../services/otpService.js';
@@ -27,8 +36,8 @@ export async function sendOtp(req: Request, res: Response) {
 
     // Check if already registered
     const existingUser = isEmail
-      ? await User.findOne({ email: contact })
-      : await User.findOne({ phone: contact });
+      ? findUserByEmail(contact)
+      : findUserByPhone(contact);
     if (existingUser) {
       const label = isEmail ? 'This email' : 'This phone number';
       res.status(409).json({ error: `${label} is already registered. Please login instead.` });
@@ -37,10 +46,10 @@ export async function sendOtp(req: Request, res: Response) {
 
     // Generate OTP
     const code = generateOtpCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
     // Store OTP with the contact as identifier
-    await Otp.create({ phone: contact, code, expiresAt });
+    createOtp({ phone: contact, code, expiresAt, createdAt: Date.now() });
 
     // Always log OTP to console
     console.log(`\n🔐 OTP for ${contact}: ${code} (expires in 10 min)\n`);
@@ -89,21 +98,21 @@ export async function verifyOtp(req: Request, res: Response) {
       return;
     }
 
-    const otpRecord = await Otp.findOne({ phone: contact, code });
+    const otpRecord = findOtp(contact, code);
 
     if (!otpRecord) {
       res.status(400).json({ error: 'Invalid verification code' });
       return;
     }
 
-    if (otpRecord.expiresAt < new Date()) {
-      await Otp.deleteOne({ _id: otpRecord._id });
+    if (otpRecord.expiresAt < Date.now()) {
+      deleteOtp(otpRecord._id);
       res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
       return;
     }
 
     // Clean up used OTP
-    await Otp.deleteOne({ _id: otpRecord._id });
+    deleteOtp(otpRecord._id);
 
     // Return temp token for password creation
     const tempToken = signTempToken({ uid: contact, type: 'temp' });
@@ -159,23 +168,21 @@ export async function createPassword(req: Request, res: Response) {
     }
 
     // Check for existing user
-    const orConditions: Record<string, unknown>[] = [];
-    if (email) orConditions.push({ email: email.toLowerCase().trim() });
-    if (phone) orConditions.push({ phone });
-
-    if (orConditions.length > 0) {
-      const existing = await User.findOne({ $or: orConditions });
-      if (existing) {
-        res.status(409).json({ error: 'An account with this email or phone already exists' });
-        return;
-      }
+    const existing = findUserByEmailOrPhone(
+      email ? email.toLowerCase().trim() : undefined,
+      phone || undefined
+    );
+    if (existing) {
+      res.status(409).json({ error: 'An account with this email or phone already exists' });
+      return;
     }
 
     // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 12);
     const uniqueId = generateUniqueId();
+    const now = Date.now();
 
-    const userData: Record<string, unknown> = {
+    const user = createUser({
       password: hashedPassword,
       uniqueId,
       displayName: '',
@@ -185,28 +192,26 @@ export async function createPassword(req: Request, res: Response) {
         allergies: '',
         medications: '',
       },
-      createdAt: new Date(),
-      lastLoginAt: new Date(),
-    };
-    if (email) userData.email = email.toLowerCase().trim();
-    if (phone) userData.phone = phone;
+      email: email ? email.toLowerCase().trim() : undefined,
+      phone: phone || undefined,
+      createdAt: now,
+      lastLoginAt: now,
+    });
 
-    const user = await User.create(userData);
-
-    const token = signToken({ uid: user._id.toString(), type: 'auth' });
+    const token = signToken({ uid: user._id, type: 'auth' });
 
     res.status(201).json({
       message: `Account created! Your unique ID: ${uniqueId}`,
       token,
       user: {
-        uid: user._id.toString(),
+        uid: user._id,
         uniqueId: user.uniqueId,
-        email: user.email,
-        phone: user.phone,
+        email: user.email || '',
+        phone: user.phone || '',
         displayName: user.displayName,
         medicalInfo: user.medicalInfo,
-        createdAt: user.createdAt.getTime(),
-        lastLoginAt: user.lastLoginAt.getTime(),
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
       },
     });
   } catch (err) {
@@ -232,11 +237,11 @@ export async function login(req: Request, res: Response) {
     let user;
 
     if (isEmail) {
-      user = await User.findOne({ email: email.toLowerCase().trim() });
+      user = findUserByEmail(email.toLowerCase().trim());
     } else {
       // Clean phone: strip everything except digits, prepend +
       const cleanPhone = '+' + email.replace(/[^0-9]/g, '');
-      user = await User.findOne({ phone: cleanPhone });
+      user = findUserByPhone(cleanPhone);
     }
 
     if (!user) {
@@ -251,23 +256,23 @@ export async function login(req: Request, res: Response) {
     }
 
     // Update last login
-    user.lastLoginAt = new Date();
-    await user.save();
+    const now = Date.now();
+    updateUser(user._id, { lastLoginAt: now });
 
-    const token = signToken({ uid: user._id.toString(), type: 'auth' });
+    const token = signToken({ uid: user._id, type: 'auth' });
 
     res.json({
       message: 'Welcome back!',
       token,
       user: {
-        uid: user._id.toString(),
+        uid: user._id,
         uniqueId: user.uniqueId,
-        email: user.email,
-        phone: user.phone,
+        email: user.email || '',
+        phone: user.phone || '',
         displayName: user.displayName,
         medicalInfo: user.medicalInfo,
-        createdAt: user.createdAt.getTime(),
-        lastLoginAt: user.lastLoginAt.getTime(),
+        createdAt: user.createdAt,
+        lastLoginAt: now,
       },
     });
   } catch (err) {
@@ -288,7 +293,7 @@ export async function forgotPassword(req: Request, res: Response) {
       return;
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = findUserByEmail(email.toLowerCase());
     if (!user) {
       // Don't reveal whether email exists — just respond success
       res.json({ message: 'If an account exists, a password reset link has been sent.' });
@@ -296,9 +301,10 @@ export async function forgotPassword(req: Request, res: Response) {
     }
 
     const resetToken = generateResetToken();
-    user.resetToken = resetToken;
-    user.resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-    await user.save();
+    updateUser(user._id, {
+      resetToken,
+      resetTokenExpires: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}?resetToken=${resetToken}&email=${encodeURIComponent(email)}`;
 
@@ -332,22 +338,20 @@ export async function resetPassword(req: Request, res: Response) {
       return;
     }
 
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      resetToken: token,
-      resetTokenExpires: { $gt: new Date() },
-    });
+    const user = findUserByEmail(email.toLowerCase());
 
-    if (!user) {
+    if (!user || user.resetToken !== token || !user.resetTokenExpires || user.resetTokenExpires < Date.now()) {
       res.status(400).json({ error: 'Invalid or expired reset link' });
       return;
     }
 
     // Update password
-    user.password = await bcrypt.hash(password, 12);
-    user.resetToken = undefined;
-    user.resetTokenExpires = undefined;
-    await user.save();
+    const hashedPassword = await bcrypt.hash(password, 12);
+    updateUser(user._id, {
+      password: hashedPassword,
+      resetToken: undefined,
+      resetTokenExpires: undefined,
+    });
 
     res.json({ message: 'Password reset successful. You can now login.' });
   } catch (err) {
@@ -366,7 +370,7 @@ export async function getProfile(req: Request, res: Response) {
       return;
     }
 
-    const user = await User.findById(req.user.uid);
+    const user = findUserById(req.user.uid);
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -374,14 +378,14 @@ export async function getProfile(req: Request, res: Response) {
 
     res.json({
       user: {
-        uid: user._id.toString(),
+        uid: user._id,
         uniqueId: user.uniqueId,
-        email: user.email,
-        phone: user.phone,
+        email: user.email || '',
+        phone: user.phone || '',
         displayName: user.displayName,
         medicalInfo: user.medicalInfo,
-        createdAt: user.createdAt.getTime(),
-        lastLoginAt: user.lastLoginAt.getTime(),
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
       },
     });
   } catch (err) {

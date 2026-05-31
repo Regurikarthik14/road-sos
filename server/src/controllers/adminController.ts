@@ -1,31 +1,26 @@
 import { type Request, type Response } from 'express';
-import { User } from '../models/User.js';
-import { isConnected } from '../config/db.js';
+import { getAllUsers as getUsers, findUserById, findUserByPhone, findUserByEmail } from '../config/jsonDb.js';
 
 // =========================================================
 // GET /api/admin/users
 // =========================================================
 export async function getAllUsers(_req: Request, res: Response) {
   try {
-    if (!isConnected()) {
-      res.status(503).json({ error: 'Database not connected' });
-      return;
-    }
-
-    const users = await User.find({}).select('-password').sort({ createdAt: -1 });
-    res.json({
-      total: users.length,
-      users: users.map((u) => ({
-        uid: u._id.toString(),
+    const users = getUsers();
+    const safe = users
+      .map((u) => ({
+        uid: u._id,
         uniqueId: u.uniqueId,
-        email: u.email,
-        phone: u.phone,
+        email: u.email || '',
+        phone: u.phone || '',
         displayName: u.displayName,
         medicalInfo: u.medicalInfo,
-        createdAt: u.createdAt.getTime(),
-        lastLoginAt: u.lastLoginAt.getTime(),
-      })),
-    });
+        createdAt: u.createdAt,
+        lastLoginAt: u.lastLoginAt,
+      }))
+      .reverse(); // newest first
+
+    res.json({ total: safe.length, users: safe });
   } catch (err) {
     console.error('getAllUsers error:', err);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -34,25 +29,15 @@ export async function getAllUsers(_req: Request, res: Response) {
 
 // =========================================================
 // GET /api/admin/users/:id
-//    Find user by MongoDB _id OR uniqueId
+//    Find user by _id, email, or uniqueId
 // =========================================================
 export async function getUserById(req: Request, res: Response) {
   try {
-    if (!isConnected()) {
-      res.status(503).json({ error: 'Database not connected' });
-      return;
-    }
-
     const { id } = req.params;
 
-    // Try to find by MongoDB _id first, then by uniqueId
-    let user;
-    if (/^[a-f0-9]{24}$/i.test(id)) {
-      user = await User.findById(id).select('-password');
-    }
-    if (!user) {
-      user = await User.findOne({ uniqueId: id }).select('-password');
-    }
+    let user = findUserById(id);
+    if (!user) user = findUserByPhone(id);
+    if (!user) user = findUserByEmail(id);
 
     if (!user) {
       res.status(404).json({ error: 'User not found' });
@@ -61,14 +46,14 @@ export async function getUserById(req: Request, res: Response) {
 
     res.json({
       user: {
-        uid: user._id.toString(),
+        uid: user._id,
         uniqueId: user.uniqueId,
-        email: user.email,
-        phone: user.phone,
+        email: user.email || '',
+        phone: user.phone || '',
         displayName: user.displayName,
         medicalInfo: user.medicalInfo,
-        createdAt: user.createdAt.getTime(),
-        lastLoginAt: user.lastLoginAt.getTime(),
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
       },
     });
   } catch (err) {
