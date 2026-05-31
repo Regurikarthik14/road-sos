@@ -195,35 +195,46 @@ function LoginView() {
 }
 
 // =========================================================
-// Register View
+// Register View — Facebook-style: sign up with email OR phone
 // =========================================================
+
+type RegisterMethod = 'email' | 'phone';
 
 function RegisterView() {
   const { sendOtp, isProcessing, setAuthStep } = useAuth();
+  const [method, setMethod] = useState<RegisterMethod>('email');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const countryCode = '1';
   const [localError, setLocalError] = useState('');
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setLocalError('');
-    if (!email.trim() || !phone.trim()) return;
 
-    // Basic email validation
-    if (!email.includes('@') || !email.includes('.')) {
-      setLocalError('Please enter a valid email address.');
-      return;
+    if (method === 'email') {
+      if (!email.trim()) return;
+      if (!email.includes('@') || !email.includes('.')) {
+        setLocalError('Please enter a valid email address.');
+        return;
+      }
+      try {
+        await sendOtp(email.trim(), '');
+        setAuthStep('otp-verify');
+      } catch {
+        // Error handled in AuthContext
+      }
+    } else {
+      if (!phone.trim()) return;
+      const digits = phone.replace(/\D/g, '');
+      const fullPhone = `+${digits}`;
+      try {
+        await sendOtp('', fullPhone);
+        setAuthStep('otp-verify');
+      } catch {
+        // Error handled in AuthContext
+      }
     }
-
-    const fullPhone = `+${countryCode}${phone.replace(/\D/g, '')}`;
-    try {
-      await sendOtp(email.trim(), fullPhone);
-      setAuthStep('otp-verify');
-    } catch {
-      // Error handled in AuthContext
-    }
-  }, [email, phone, countryCode, sendOtp, setAuthStep]);
+  }, [method, email, phone, sendOtp, setAuthStep]);
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, '');
@@ -238,44 +249,64 @@ function RegisterView() {
         ← Back
       </button>
       <h2 style={styles.viewTitle}>Create Account</h2>
-      <p style={styles.viewDescription}>Enter your email and phone to get started</p>
+      <p style={styles.viewDescription}>Sign up with your email or phone number</p>
+
+      {/* Method toggle tabs */}
+      <div style={styles.toggleRow}>
+        <button
+          style={{
+            ...styles.toggleTab,
+            ...(method === 'email' ? styles.toggleTabActive : {}),
+          }}
+          onClick={() => setMethod('email')}
+        >
+          📧 Email
+        </button>
+        <button
+          style={{
+            ...styles.toggleTab,
+            ...(method === 'phone' ? styles.toggleTabActive : {}),
+          }}
+          onClick={() => setMethod('phone')}
+        >
+          📱 Phone
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} style={styles.form}>
-        <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Email</label>
-          <input
-            style={styles.input}
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            autoFocus
-            required
-          />
-        </div>
-
-        {localError && <div style={styles.localError}>{localError}</div>}
-
-        <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Phone Number</label>
-          <div style={styles.phoneWrapper}>
-            <div style={styles.countryCodePill}>
-              <span style={styles.countryCodeText}>+{countryCode}</span>
-            </div>
+        {method === 'email' ? (
+          <div style={styles.inputGroup}>
+            <label style={styles.inputLabel}>Email Address</label>
             <input
-              style={styles.inputPhone}
+              style={styles.input}
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+              required
+            />
+            <span style={styles.inputHint}>We'll send a verification code to your email</span>
+          </div>
+        ) : (
+          <div style={styles.inputGroup}>
+            <label style={styles.inputLabel}>Phone Number</label>
+            <input
+              style={styles.input}
               type="tel"
-              placeholder="(555) 000-0000"
+              placeholder="+1 (555) 000-0000"
               value={phone}
               onChange={(e) => setPhone(formatPhone(e.target.value))}
               autoComplete="tel"
+              autoFocus
               required
-              maxLength={18}
             />
+            <span style={styles.inputHint}>We'll send a verification code via SMS</span>
           </div>
-          <span style={styles.inputHint}>We'll send a verification code via SMS</span>
-        </div>
+        )}
+
+        {localError && <div style={styles.localError}>{localError}</div>}
 
         <button
           type="submit"
@@ -349,16 +380,20 @@ function OTPVerifyView() {
     }
   }, [tempData, sendOtp]);
 
+  const isEmailReg = !!tempData.email;
+  const verifyTarget = isEmailReg ? tempData.email : tempData.phone;
+  const verifyLabel = isEmailReg ? 'Email' : 'Phone';
+
   return (
     <div style={styles.viewContainer}>
       <button style={styles.backBtn} onClick={() => setAuthStep('register')} aria-label="Go back">
         ← Back
       </button>
 
-      <div style={styles.otpIcon}>📱</div>
-      <h2 style={styles.viewTitle}>Verify Phone</h2>
+      <div style={styles.otpIcon}>{isEmailReg ? '✉️' : '📱'}</div>
+      <h2 style={styles.viewTitle}>Verify {verifyLabel}</h2>
       <p style={styles.viewDescription}>
-        Enter the 6-digit code sent to <strong>{tempData.phone}</strong>
+        Enter the 6-digit code sent to <strong>{verifyTarget}</strong>
       </p>
 
       <form onSubmit={handleSubmit} style={styles.form}>

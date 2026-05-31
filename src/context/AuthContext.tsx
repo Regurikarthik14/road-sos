@@ -175,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsProcessing(true);
     setError(null);
     try {
-      await api.verifyOtp(tempData.phone, code);
+      await api.verifyOtp(tempData.email, tempData.phone, code);
       return true;
     } catch (err: any) {
       const msg = err.message || '';
@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsProcessing(false);
     }
-  }, [tempData.phone]);
+  }, [tempData.email, tempData.phone]);
 
   // =========================================================
   // Register — Step 3: Create password
@@ -200,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const { email, phone } = tempData;
-      if (!email || !phone) {
+      if (!email && !phone) {
         setError('Registration data not found. Please start again.');
         setIsProcessing(false);
         return;

@@ -15,16 +15,23 @@ import type { JwtPayload } from '../types/index.js';
 export async function sendOtp(req: Request, res: Response) {
   try {
     const { email, phone } = req.body;
+    const identifier = email || phone;
 
-    if (!email || !phone) {
-      res.status(400).json({ error: 'Email and phone are required' });
+    if (!identifier) {
+      res.status(400).json({ error: 'Email or phone number is required' });
       return;
     }
 
-    // Check if email already registered
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const isEmail = !!email;
+    const contact = isEmail ? email.toLowerCase().trim() : phone;
+
+    // Check if already registered
+    const existingUser = isEmail
+      ? await User.findOne({ email: contact })
+      : await User.findOne({ phone: contact });
     if (existingUser) {
-      res.status(409).json({ error: 'This email is already registered. Please login instead.' });
+      const label = isEmail ? 'This email' : 'This phone number';
+      res.status(409).json({ error: `${label} is already registered. Please login instead.` });
       return;
     }
 
@@ -32,29 +39,33 @@ export async function sendOtp(req: Request, res: Response) {
     const code = generateOtpCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store OTP in DB
-    await Otp.create({ phone, code, expiresAt });
+    // Store OTP with the contact as identifier
+    await Otp.create({ phone: contact, code, expiresAt });
 
-    // Always log OTP to console for development/testing
-    console.log(`\n🔐 OTP for ${phone}: ${code} (expires in 10 min)\n`);
+    // Always log OTP to console
+    console.log(`\n🔐 OTP for ${contact}: ${code} (expires in 10 min)\n`);
 
-    // Send OTP via SMS
-    try {
-      await sendSmsOtp(phone, code);
-    } catch (smsErr) {
-      // If SMS fails, fall back to email OTP
-      console.warn('SMS failed, sending OTP via email:', smsErr);
+    // Send OTP via the chosen method
+    if (isEmail) {
       try {
         await sendEmailOtp(email, code);
       } catch (emailErr) {
-        console.error('Both SMS and email failed');
-        console.log('⚠️  No SMS/email configured — use the OTP code printed above to verify');
-        // Don't fail — let dev testing proceed with the console-printed code
+        console.error('Email OTP failed:', emailErr);
+        console.log('⚠️  Email not configured — use the OTP code printed above to verify');
+      }
+    } else {
+      try {
+        await sendSmsOtp(phone, code);
+      } catch (smsErr) {
+        console.warn('SMS failed:', smsErr);
+        console.log('⚠️  SMS not configured — use the OTP code printed above to verify');
       }
     }
 
-    // In dev mode, return OTP in response for easy testing
-    const response: Record<string, unknown> = { message: 'Verification code sent', phone };
+    const response: Record<string, unknown> = {
+      message: 'Verification code sent',
+      [isEmail ? 'email' : 'phone']: contact,
+    };
     if (process.env.NODE_ENV !== 'production') {
       response.devOtp = code;
     }
@@ -70,14 +81,15 @@ export async function sendOtp(req: Request, res: Response) {
 // =========================================================
 export async function verifyOtp(req: Request, res: Response) {
   try {
-    const { phone, code } = req.body;
+    const { email, phone, code } = req.body;
+    const contact = email || phone;
 
-    if (!phone || !code) {
-      res.status(400).json({ error: 'Phone and code are required' });
+    if (!contact || !code) {
+      res.status(400).json({ error: 'Email/phone and code are required' });
       return;
     }
 
-    const otpRecord = await Otp.findOne({ phone, code });
+    const otpRecord = await Otp.findOne({ phone: contact, code });
 
     if (!otpRecord) {
       res.status(400).json({ error: 'Invalid verification code' });
@@ -94,9 +106,9 @@ export async function verifyOtp(req: Request, res: Response) {
     await Otp.deleteOne({ _id: otpRecord._id });
 
     // Return temp token for password creation
-    const tempToken = signTempToken({ uid: phone, type: 'temp' });
+    const tempToken = signTempToken({ uid: contact, type: 'temp' });
 
-    res.json({ message: 'Phone verified', tempToken });
+    res.json({ message: 'Verified', tempToken });
   } catch (err) {
     console.error('verifyOtp error:', err);
     res.status(500).json({ error: 'Failed to verify code' });
@@ -109,9 +121,10 @@ export async function verifyOtp(req: Request, res: Response) {
 export async function createPassword(req: Request, res: Response) {
   try {
     const { email, phone, password } = req.body;
+    const identifier = email || phone;
 
-    if (!email || !phone || !password) {
-      res.status(400).json({ error: 'Email, phone, and password are required' });
+    if (!identifier || !password) {
+      res.status(400).json({ error: 'Email/phone and password are required' });
       return;
     }
 
@@ -120,11 +133,14 @@ export async function createPassword(req: Request, res: Response) {
       return;
     }
 
-    // Validate temp token from Authorization header
+    const isEmail = !!email;
+    const contact = isEmail ? email.toLowerCase().trim() : phone;
+
+    // Validate temp token
     const authHeader = req.headers.authorization;
     const tempToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
     if (!tempToken) {
-      res.status(401).json({ error: 'Phone verification required. Please verify your OTP first.' });
+      res.status(401).json({ error: 'Verification required. Please verify your OTP first.' });
       return;
     }
     try {
@@ -133,33 +149,33 @@ export async function createPassword(req: Request, res: Response) {
         res.status(401).json({ error: 'Invalid verification token.' });
         return;
       }
-      // Ensure the phone in the token matches the request
-      if (decoded.uid !== phone) {
-        res.status(403).json({ error: 'Phone number mismatch. Please verify again.' });
+      if (decoded.uid !== contact) {
+        res.status(403).json({ error: 'Contact mismatch. Please verify again.' });
         return;
       }
     } catch {
-      res.status(401).json({ error: 'Verification expired. Please verify your phone again.' });
+      res.status(401).json({ error: 'Verification expired. Please verify again.' });
       return;
     }
 
-    // Check for existing user again (in case of race condition)
-    const existing = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone }],
-    });
+    // Check for existing user
+    const orConditions: Record<string, unknown>[] = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone });
 
-    if (existing) {
-      res.status(409).json({ error: 'An account with this email or phone already exists' });
-      return;
+    if (orConditions.length > 0) {
+      const existing = await User.findOne({ $or: orConditions });
+      if (existing) {
+        res.status(409).json({ error: 'An account with this email or phone already exists' });
+        return;
+      }
     }
 
     // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 12);
     const uniqueId = generateUniqueId();
 
-    const user = await User.create({
-      email: email.toLowerCase(),
-      phone,
+    const userData: Record<string, unknown> = {
       password: hashedPassword,
       uniqueId,
       displayName: '',
@@ -171,9 +187,12 @@ export async function createPassword(req: Request, res: Response) {
       },
       createdAt: new Date(),
       lastLoginAt: new Date(),
-    });
+    };
+    if (email) userData.email = email.toLowerCase().trim();
+    if (phone) userData.phone = phone;
 
-    // Generate auth token
+    const user = await User.create(userData);
+
     const token = signToken({ uid: user._id.toString(), type: 'auth' });
 
     res.status(201).json({

@@ -87,10 +87,10 @@ export async function sendOtp(email: string, phone: string) {
   return data;
 }
 
-export async function verifyOtp(phone: string, code: string): Promise<string> {
+export async function verifyOtp(email: string, phone: string, code: string): Promise<string> {
   const data = await request<{ tempToken: string }>('/auth/verify-otp', {
     method: 'POST',
-    body: JSON.stringify({ phone, code }),
+    body: JSON.stringify({ email, phone, code }),
   });
   if (data.tempToken) {
     setTempToken(data.tempToken);
@@ -109,12 +109,16 @@ export async function createPassword(
     headers['Authorization'] = `Bearer ${tempToken}`;
   }
 
+  const body: Record<string, string> = { password };
+  if (email) body.email = email;
+  if (phone) body.phone = phone;
+
   const data = await request<{ token: string; user: UserProfile }>(
     '/auth/create-password',
     {
       method: 'POST',
       headers,
-      body: JSON.stringify({ email, phone, password }),
+      body: JSON.stringify(body),
     }
   );
   if (data.token) {
