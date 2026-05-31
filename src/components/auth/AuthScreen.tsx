@@ -2,6 +2,42 @@ import { useState, useCallback, type FormEvent, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 // =========================================================
+// Country Code data for phone input
+// =========================================================
+
+interface CountryCode {
+  code: string;
+  flag: string;
+  name: string;
+}
+
+const COUNTRY_CODES: CountryCode[] = [
+  { code: '+1', flag: '🇺🇸', name: 'US' },
+  { code: '+1', flag: '🇨🇦', name: 'CA' },
+  { code: '+44', flag: '🇬🇧', name: 'UK' },
+  { code: '+91', flag: '🇮🇳', name: 'India' },
+  { code: '+61', flag: '🇦🇺', name: 'Australia' },
+  { code: '+86', flag: '🇨🇳', name: 'China' },
+  { code: '+49', flag: '🇩🇪', name: 'Germany' },
+  { code: '+33', flag: '🇫🇷', name: 'France' },
+  { code: '+81', flag: '🇯🇵', name: 'Japan' },
+  { code: '+55', flag: '🇧🇷', name: 'Brazil' },
+  { code: '+7', flag: '🇷🇺', name: 'Russia' },
+  { code: '+82', flag: '🇰🇷', name: 'Korea' },
+  { code: '+39', flag: '🇮🇹', name: 'Italy' },
+  { code: '+34', flag: '🇪🇸', name: 'Spain' },
+  { code: '+31', flag: '🇳🇱', name: 'Netherlands' },
+  { code: '+46', flag: '🇸🇪', name: 'Sweden' },
+  { code: '+41', flag: '🇨🇭', name: 'Switzerland' },
+  { code: '+65', flag: '🇸🇬', name: 'Singapore' },
+  { code: '+971', flag: '🇦🇪', name: 'UAE' },
+  { code: '+966', flag: '🇸🇦', name: 'Saudi Arabia' },
+  { code: '+52', flag: '🇲🇽', name: 'Mexico' },
+  { code: '+63', flag: '🇵🇭', name: 'Philippines' },
+  { code: '+27', flag: '🇿🇦', name: 'South Africa' },
+];
+
+// =========================================================
 // AuthScreen — orchestrates the entire auth flow
 // =========================================================
 
@@ -204,8 +240,28 @@ function RegisterView() {
   const { sendOtp, isProcessing, setAuthStep } = useAuth();
   const [method, setMethod] = useState<RegisterMethod>('email');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [localError, setLocalError] = useState('');
+  const countryPickerRef = useRef<HTMLDivElement>(null);
+
+  const handleCountrySelect = (cc: CountryCode) => {
+    setSelectedCountry(cc);
+    setShowCountryPicker(false);
+  };
+
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    setPhoneDigits(formatPhone(digits));
+  };
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
@@ -224,9 +280,13 @@ function RegisterView() {
         // Error handled in AuthContext
       }
     } else {
-      if (!phone.trim()) return;
-      const digits = phone.replace(/\D/g, '');
-      const fullPhone = `+${digits}`;
+      if (!phoneDigits.trim()) return;
+      const digits = phoneDigits.replace(/\D/g, '');
+      if (digits.length < 7) {
+        setLocalError('Please enter a complete phone number.');
+        return;
+      }
+      const fullPhone = `${selectedCountry.code}${digits}`;
       try {
         await sendOtp('', fullPhone);
         setAuthStep('otp-verify');
@@ -234,14 +294,9 @@ function RegisterView() {
         // Error handled in AuthContext
       }
     }
-  }, [method, email, phone, sendOtp, setAuthStep]);
+  }, [method, email, phoneDigits, selectedCountry, sendOtp, setAuthStep]);
 
-  const formatPhone = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-  };
+  const filteredCodes = COUNTRY_CODES;
 
   return (
     <div style={styles.viewContainer}>
@@ -292,17 +347,53 @@ function RegisterView() {
         ) : (
           <div style={styles.inputGroup}>
             <label style={styles.inputLabel}>Phone Number</label>
-            <input
-              style={styles.input}
-              type="tel"
-              placeholder="+1 (555) 000-0000"
-              value={phone}
-              onChange={(e) => setPhone(formatPhone(e.target.value))}
-              autoComplete="tel"
-              autoFocus
-              required
-            />
-            <span style={styles.inputHint}>We'll send a verification code via SMS</span>
+            <div style={styles.phoneWrapper}>
+              {/* Country Code Picker */}
+              <div ref={countryPickerRef} style={styles.countryPickerWrapper}>
+                <button
+                  type="button"
+                  style={styles.countryPickerBtn}
+                  onClick={() => setShowCountryPicker(!showCountryPicker)}
+                >
+                  <span style={styles.countryFlag}>{selectedCountry.flag}</span>
+                  <span style={styles.countryCodeText}>{selectedCountry.code}</span>
+                  <span style={styles.dropdownArrow}>{showCountryPicker ? '▲' : '▼'}</span>
+                </button>
+                {showCountryPicker && (
+                  <div style={styles.countryDropdown}>
+                    {filteredCodes.map((cc, i) => (
+                      <button
+                        key={`${cc.code}-${cc.name}-${i}`}
+                        type="button"
+                        style={{
+                          ...styles.countryOption,
+                          ...(selectedCountry.code === cc.code && selectedCountry.name === cc.name
+                            ? styles.countryOptionActive
+                            : {}),
+                        }}
+                        onClick={() => handleCountrySelect(cc)}
+                      >
+                        <span style={styles.countryFlag}>{cc.flag}</span>
+                        <span style={styles.countryName}>{cc.name}</span>
+                        <span style={styles.countryCodeOption}>{cc.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Phone number input */}
+              <input
+                style={styles.inputPhone}
+                type="tel"
+                placeholder="(555) 000-0000"
+                value={phoneDigits}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                autoComplete="tel-national"
+                autoFocus
+                required
+              />
+            </div>
+            <span style={styles.inputHint}>We'll send a verification code via SMS to {selectedCountry.code}</span>
           </div>
         )}
 
@@ -1063,20 +1154,83 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '8px',
     alignItems: 'stretch',
   },
-  countryCodePill: {
+  countryPickerWrapper: {
+    position: 'relative' as const,
+    zIndex: 10,
+  },
+  countryPickerBtn: {
     display: 'flex',
     alignItems: 'center',
-    padding: '0 12px',
+    gap: '4px',
+    padding: '14px 10px',
     borderRadius: '10px',
     border: '1px solid var(--border-light)',
-    background: 'var(--bg-tertiary)',
-    minWidth: '50px',
-    justifyContent: 'center',
-  },
-  countryCodeText: {
+    background: 'var(--bg-secondary)',
+    cursor: 'pointer',
+    color: 'var(--text-primary)',
     fontSize: '15px',
     fontWeight: '600',
+    outline: 'none',
+    transition: 'border-color 0.2s ease',
+    minWidth: '85px',
+    justifyContent: 'space-between',
+    fontFamily: 'inherit',
+  },
+  countryFlag: {
+    fontSize: '18px',
+    lineHeight: 1,
+  },
+  countryCodeText: {
+    fontSize: '14px',
+    fontWeight: '700',
     color: 'var(--text-primary)',
+  },
+  dropdownArrow: {
+    fontSize: '10px',
+    color: 'var(--text-dim)',
+    marginLeft: '2px',
+  },
+  countryDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: '4px',
+    width: '220px',
+    maxHeight: '260px',
+    overflowY: 'auto',
+    borderRadius: '10px',
+    border: '1px solid var(--border-light)',
+    background: 'var(--bg-secondary)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+  },
+  countryOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '10px 12px',
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+    fontWeight: '500',
+    textAlign: 'left',
+    fontFamily: 'inherit',
+    transition: 'background 0.15s ease',
+  },
+  countryOptionActive: {
+    background: 'rgba(239,68,68,0.08)',
+  },
+  countryName: {
+    flex: 1,
+    fontSize: '13px',
+    fontWeight: '500',
+  },
+  countryCodeOption: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: 'var(--text-dim)',
   },
   inputPhone: {
     flex: 1,
@@ -1090,6 +1244,31 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     transition: 'border-color 0.2s ease',
     fontFamily: 'inherit',
+  },
+  toggleRow: {
+    display: 'flex',
+    gap: '0',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    border: '1px solid var(--border-light)',
+    background: 'var(--bg-tertiary)',
+  },
+  toggleTab: {
+    flex: 1,
+    padding: '10px 14px',
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--text-dim)',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    fontFamily: 'inherit',
+  },
+  toggleTabActive: {
+    background: 'var(--bg-primary)',
+    color: 'var(--text-primary)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
   },
   passwordWrapper: {
     position: 'relative',

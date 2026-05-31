@@ -1,24 +1,23 @@
 import { type Request, type Response } from 'express';
-import { getAllUsers as getUsers, findUserById, findUserByPhone, findUserByEmail } from '../config/jsonDb.js';
+import { User } from '../models/User.js';
 
 // =========================================================
 // GET /api/admin/users
 // =========================================================
 export async function getAllUsers(_req: Request, res: Response) {
   try {
-    const users = getUsers();
-    const safe = users
-      .map((u) => ({
-        uid: u._id,
-        uniqueId: u.uniqueId,
-        email: u.email || '',
-        phone: u.phone || '',
-        displayName: u.displayName,
-        medicalInfo: u.medicalInfo,
-        createdAt: u.createdAt,
-        lastLoginAt: u.lastLoginAt,
-      }))
-      .reverse(); // newest first
+    const users = await User.find({}).sort({ createdAt: -1 }).lean();
+
+    const safe = users.map((u) => ({
+      uid: u._id.toString(),
+      uniqueId: u.uniqueId,
+      email: u.email || '',
+      phone: u.phone || '',
+      displayName: u.displayName,
+      medicalInfo: u.medicalInfo,
+      createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt,
+    }));
 
     res.json({ total: safe.length, users: safe });
   } catch (err) {
@@ -35,9 +34,11 @@ export async function getUserById(req: Request, res: Response) {
   try {
     const { id } = req.params;
 
-    let user = findUserById(id);
-    if (!user) user = findUserByPhone(id);
-    if (!user) user = findUserByEmail(id);
+    // Try by _id first
+    let user = await User.findById(id).lean();
+    if (!user) user = await User.findOne({ phone: id }).lean();
+    if (!user) user = await User.findOne({ email: id.toLowerCase() }).lean();
+    if (!user) user = await User.findOne({ uniqueId: id }).lean();
 
     if (!user) {
       res.status(404).json({ error: 'User not found' });
@@ -46,7 +47,7 @@ export async function getUserById(req: Request, res: Response) {
 
     res.json({
       user: {
-        uid: user._id,
+        uid: user._id.toString(),
         uniqueId: user.uniqueId,
         email: user.email || '',
         phone: user.phone || '',
