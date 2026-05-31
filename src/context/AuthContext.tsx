@@ -151,8 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsProcessing(true);
     setError(null);
     try {
-      setTempData({ email, phone });
-      await api.sendOtp(email, phone);
+      const data = await api.sendOtp(email, phone);
+      setTempData({ email, phone, devOtp: (data as any).devOtp });
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already registered')) {

@@ -74,10 +74,8 @@ export async function sendOtp(req: Request, res: Response) {
     const response: Record<string, unknown> = {
       message: 'Verification code sent',
       [isEmail ? 'email' : 'phone']: contact,
+      devOtp: code, // Always shown for hackathon demo
     };
-    if (process.env.NODE_ENV !== 'production') {
-      response.devOtp = code;
-    }
     res.json(response);
   } catch (err) {
     console.error('sendOtp error:', err);

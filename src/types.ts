@@ -89,6 +89,7 @@ export interface TempRegistrationData {
   phone: string;
   verificationId?: string;
   displayName?: string;
+  devOtp?: string;
 }
 
 export interface UserProfile {

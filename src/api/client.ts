@@ -1,6 +1,8 @@
 import type { UserProfile } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// On Vercel, API is served from the same domain under /api/*
+// In dev, set VITE_API_URL=http://localhost:3001/api in .env
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface ApiResponse<T = unknown> {
   message?: string;

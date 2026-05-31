@@ -1,4 +1,4 @@
-import { useState, useCallback, type FormEvent, useRef } from 'react';
+import { useState, useCallback, useEffect, type FormEvent, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 // =========================================================
@@ -428,6 +428,15 @@ function OTPVerifyView() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // If devOtp is available (email/SMS not configured), auto-fill it
+  const [autoFilled, setAutoFilled] = useState(false);
+  useEffect(() => {
+    if (tempData.devOtp && !autoFilled) {
+      setOtp(tempData.devOtp.split(''));
+      setAutoFilled(true);
+    }
+  }, [tempData.devOtp, autoFilled]);
+
   const handleDigitChange = useCallback((index: number, value: string) => {
     if (value && !/^\d$/.test(value)) return;
     const newOtp = [...otp];
@@ -484,7 +493,10 @@ function OTPVerifyView() {
       <div style={styles.otpIcon}>{isEmailReg ? '✉️' : '📱'}</div>
       <h2 style={styles.viewTitle}>Verify {verifyLabel}</h2>
       <p style={styles.viewDescription}>
-        Enter the 6-digit code sent to <strong>{verifyTarget}</strong>
+        {tempData.devOtp
+          ? 'Demo mode — the code is pre-filled below. Click Verify to continue.'
+          : <>Enter the 6-digit code sent to <strong>{verifyTarget}</strong></>
+        }
       </p>
 
       <form onSubmit={handleSubmit} style={styles.form}>
