@@ -208,6 +208,13 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
   const routeMarkerEndRef = useRef<L.Marker | null>(null);
   const trafficSegmentsRef = useRef<L.Polyline[]>([]);
   const hasFittedBoundsRef = useRef(false);
+  // Separate refs for user location markers — updated in-place to avoid blinking
+  const userAccuracyRef = useRef<L.Circle | null>(null);
+  const userOuterRef = useRef<L.CircleMarker | null>(null);
+  const userInnerRef = useRef<L.CircleMarker | null>(null);
+  const userLabelRef = useRef<L.Marker | null>(null);
+  // Stable category center — captured once when category opens, NOT on every GPS tick
+  const categoryCenterRef = useRef<[number, number] | null>(null);
 
   // Determine effective center: real GPS, fallback demo, or wait
   const isDemoMode = useDemoLocation || (!sharedLocation && demoAutoTriggered);
@@ -561,65 +568,99 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     clearRoute();
     // Reset bounds fitting flag so the next setup fits bounds for the new category
     hasFittedBoundsRef.current = false;
-  }, [activeCategory, clearRoute]);
+    // Capture the center once when category opens — stabilizes the reference
+    // so the category markers effect doesn't re-run on every GPS tick
+    if (center) {
+      categoryCenterRef.current = center;
+    }
+  }, [activeCategory, clearRoute, center]);
 
-  // Update markers when category or center changes
+  // Create user location markers once (on category open)
+  // Does NOT depend on sharedLocation — accuracy is updated separately via setLatLng effect
+  const createUserMarkers = useCallback((map: L.Map, latlng: L.LatLngExpression, accuracy?: number | null) => {
+    // Clean up any existing user markers first
+    if (userAccuracyRef.current) { userAccuracyRef.current.remove(); userAccuracyRef.current = null; }
+    if (userOuterRef.current) { userOuterRef.current.remove(); userOuterRef.current = null; }
+    if (userInnerRef.current) { userInnerRef.current.remove(); userInnerRef.current = null; }
+    if (userLabelRef.current) { userLabelRef.current.remove(); userLabelRef.current = null; }
+
+    if (accuracy) {
+      const accuracyCircle = L.circle(latlng, {
+        radius: accuracy,
+        color: '#EF4444', weight: 1, opacity: 0.3,
+        fillColor: '#EF4444', fillOpacity: 0.08,
+        interactive: false,
+      }).addTo(map);
+      userAccuracyRef.current = accuracyCircle;
+    }
+
+    const userOuter = L.circleMarker(latlng, {
+      radius: 16, fillColor: '#EF4444', color: '#fff',
+      weight: 3, opacity: 1, fillOpacity: 0.25,
+      className: 'user-location-pulse',
+    }).addTo(map);
+    userOuterRef.current = userOuter;
+
+    const userInner = L.circleMarker(latlng, {
+      radius: 6, fillColor: '#EF4444', color: '#EF4444',
+      weight: 2, fillOpacity: 1,
+    }).addTo(map);
+    userInnerRef.current = userInner;
+
+    const userLabelText = isDemoMode ? 'Demo Location' : 'Your Location';
+    const userLabel = L.marker(latlng, {
+      icon: L.divIcon({
+        className: 'map-user-label',
+        html: `<span style="color:#F9FAFB;font-size:10px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;white-space:nowrap;">${userLabelText}</span>`,
+        iconSize: [30, 16], iconAnchor: [15, 20],
+      }),
+    }).addTo(map);
+    userLabelRef.current = userLabel;
+  }, [isDemoMode]);
+
+  // Smoothly move user markers in-place on GPS update — no destroy/recreate = no blink
+  useEffect(() => {
+    if (!mapRef.current || !center || !activeCategory) return;
+    const latlng: L.LatLngExpression = [center[0], center[1]];
+
+    if (userOuterRef.current) {
+      userOuterRef.current.setLatLng(latlng);
+    }
+    if (userInnerRef.current) {
+      userInnerRef.current.setLatLng(latlng);
+    }
+    if (userLabelRef.current) {
+      userLabelRef.current.setLatLng(latlng);
+    }
+    if (userAccuracyRef.current && sharedLocation?.accuracy) {
+      userAccuracyRef.current.setLatLng(latlng);
+      userAccuracyRef.current.setRadius(sharedLocation.accuracy);
+    }
+  }, [sharedLocation?.lat, sharedLocation?.lng, activeCategory]);
+
+  // Update category markers — only depends on activeCategory, NOT on center/GPS
+  // Uses categoryCenterRef (captured once when category opens) to avoid re-creating
+  // all markers on every GPS tick or React render
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !activeCategory || !center) return;
+    const catCenter = categoryCenterRef.current;
+    if (!map || !activeCategory || !catCenter) return;
 
-    const catLocations = locations;
+    const catLocations = activeCategory && catCenter
+      ? (generateLocations(catCenter[0], catCenter[1], isDemoMode ? DEFAULT_CITY : 'Your Location')[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
+      : [];
     const color = CATEGORY_COLORS[activeCategory.id] || '#EF4444';
 
+    // Remove only category markers (not user markers)
     layerRef.current.forEach(l => l.remove());
     layerRef.current = [];
     popupMarkersRef.current = [];
 
-    const mapCenter: [number, number] = [center[0], center[1]];
+    const mapCenter: [number, number] = [catCenter[0], catCenter[1]];
     const allPoints: L.LatLngExpression[] = [mapCenter];
 
-    if (sharedLocation?.accuracy) {
-      const accuracyCircle = L.circle(mapCenter, {
-        radius: sharedLocation.accuracy,
-        color: '#EF4444',
-        weight: 1,
-        opacity: 0.3,
-        fillColor: '#EF4444',
-        fillOpacity: 0.08,
-        interactive: false,
-      }).addTo(map);
-      layerRef.current.push(accuracyCircle);
-    }
-
-    const userOuter = L.circleMarker(mapCenter, {
-      radius: 16,
-      fillColor: '#EF4444',
-      color: '#fff',
-      weight: 3,
-      opacity: 1,
-      fillOpacity: 0.25,
-      className: 'user-location-pulse',
-    }).addTo(map);
-
-    const userInner = L.circleMarker(mapCenter, {
-      radius: 6,
-      fillColor: '#EF4444',
-      color: '#EF4444',
-      weight: 2,
-      fillOpacity: 1,
-    }).addTo(map);
-
-    const userLabelText = isDemoMode ? 'Demo Location' : 'Your Location';
-    const userLabel = L.marker(mapCenter, {
-      icon: L.divIcon({
-        className: 'map-user-label',
-        html: `<span style="color:#F9FAFB;font-size:10px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;white-space:nowrap;">${userLabelText}</span>`,
-        iconSize: [30, 16],
-        iconAnchor: [15, 20],
-      }),
-    }).addTo(map);
-
-    layerRef.current.push(userOuter, userInner, userLabel);
+    // Create fresh user markers for this category
+    createUserMarkers(map, mapCenter, sharedLocation?.accuracy);
 
     catLocations.forEach((loc, i) => {
       allPoints.push([loc.lat, loc.lng]);
@@ -670,8 +711,7 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       popupMarkersRef.current.push(outer);
     });
 
-    // Only fit bounds the first time for a given category — prevents auto-zooming
-    // on every GPS location update (which was causing the map to zoom in/out repeatedly)
+    // Only fit bounds the first time for a given category
     if (!hasFittedBoundsRef.current) {
       hasFittedBoundsRef.current = true;
       if (allPoints.length > 0) {
@@ -681,11 +721,12 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     }
 
     return () => {
+      // Only clean up category markers — user markers persist across GPS updates
       layerRef.current.forEach(l => l.remove());
       layerRef.current = [];
       popupMarkersRef.current = [];
     };
-  }, [activeCategory, sharedLocation, center]);
+  }, [activeCategory, createUserMarkers]);
 
   if (!activeCategory) return null;
 
