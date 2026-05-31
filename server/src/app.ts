@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { isConnected, getDBDiagnostics } from './config/db.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 
@@ -13,5 +14,15 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Health check (shared by local server AND Vercel serverless)
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    db: isConnected() ? 'connected' : 'disconnected',
+    diagnostics: getDBDiagnostics(),
+    timestamp: Date.now(),
+  });
+});
 
 export default app;
