@@ -269,13 +269,22 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     isDemoMode,
   ]);
 
+  // Track when center first becomes available so the map initializes ONCE and never recreates
+  const [mapCenterReady, setMapCenterReady] = useState(false);
+  useEffect(() => {
+    if (center && !mapCenterReady) {
+      setMapCenterReady(true);
+    }
+  }, [center]);
+
   const locations = activeCategory && center
     ? (generateLocations(center[0], center[1], isDemoMode ? DEFAULT_CITY : 'Your Location')[activeCategory.id] ?? []).sort((a, b) => a.distanceKm - b.distanceKm)
     : [];
 
-  // Create Leaflet map when we have a center point
+  // Create Leaflet map ONCE when center becomes available — NEVER destroy/recreate on GPS updates
+  // This prevents the map blinking and ensures async route operations don't lose their map reference
   useEffect(() => {
-    if (!mapContainerRef.current || !center || mapInitializedRef.current) return;
+    if (!mapContainerRef.current || !center || !mapCenterReady || mapInitializedRef.current) return;
 
     delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
     L.Icon.Default.mergeOptions({
@@ -319,7 +328,7 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
       layerRef.current = [];
       popupMarkersRef.current = [];
     };
-  }, [center]);
+  }, [mapCenterReady]);
 
   // Update map center when user location changes (if auto-follow is on)
   useEffect(() => {
@@ -573,16 +582,20 @@ export default function MapView({ activeCategory, onClose, userLocation: sharedL
     }
   }, [clearRoute, activeCategory]);
 
+  // Clear route when category changes — but NOT on GPS updates (route should persist)
   useEffect(() => {
     clearRoute();
     // Reset bounds fitting flag so the next setup fits bounds for the new category
     hasFittedBoundsRef.current = false;
-    // Capture the center once when category opens — stabilizes the reference
-    // so the category markers effect doesn't re-run on every GPS tick
+  }, [activeCategory, clearRoute]);
+
+  // Update the stable categoryCenterRef when center actually changes
+  // This is separate from map init — no map recreation, just a ref update
+  useEffect(() => {
     if (center) {
       categoryCenterRef.current = center;
     }
-  }, [activeCategory, clearRoute, center]);
+  }, [center]);
 
   // Create user location markers once (on category open)
   // Does NOT depend on sharedLocation — accuracy is updated separately via setLatLng effect
