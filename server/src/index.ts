@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { connectDB } from './config/db.js';
+import { connectDB, isConnected } from './config/db.js';
 import authRoutes from './routes/auth.js';
 
 const app = express();
@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  res.json({ status: 'ok', db: isConnected() ? 'connected' : 'disconnected', timestamp: Date.now() });
 });
 
 // Routes
