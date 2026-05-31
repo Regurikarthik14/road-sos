@@ -52,7 +52,7 @@ export const SOS_MORSE = [
 ];
 
 // Dispatch types for emergency alerting
-export type DispatchService = 'trauma' | 'police' | 'towing' | 'puncture' | 'fire';
+export type DispatchService = 'trauma' | 'ambulance';
 export type DispatchStatus = 'pending' | 'sending' | 'sent' | 'failed';
 
 export interface DispatchEntry {
@@ -65,8 +65,5 @@ export interface DispatchEntry {
 
 export const DEFAULT_DISPATCH_SERVICES: DispatchEntry[] = [
   { service: 'trauma', label: 'Trauma Center', icon: '🏥', status: 'pending' },
-  { service: 'police', label: 'Police', icon: '👮', status: 'pending' },
-  { service: 'towing', label: 'Towing', icon: '🛻', status: 'pending' },
-  { service: 'puncture', label: 'Puncture Shop', icon: '🔧', status: 'pending' },
-  { service: 'fire', label: 'Fire Service', icon: '🚒', status: 'pending' },
+  { service: 'ambulance', label: 'Ambulance', icon: '🚑', status: 'pending' },
 ];

@@ -36,30 +36,25 @@ export default function App() {
     setIsDispatched(false);
   }, []);
 
-  // Dispatch to ALL nearest services with staggered timing (idempotent)
+  // Dispatch to trauma + ambulance only, with 10-second initial delay (idempotent)
   const dispatchToAllServices = useCallback(() => {
     if (hasDispatchedRef.current) return;
     hasDispatchedRef.current = true;
     setIsDispatched(true);
 
-    // Dispatch each service with a staggered delay for realistic simulation
+    // Dispatch each service with staggered timing
     const services: { service: DispatchService; delay: number }[] = [
       { service: 'trauma', delay: 0 },
-      { service: 'police', delay: 800 },
-      { service: 'fire', delay: 1600 },
-      { service: 'towing', delay: 2400 },
-      { service: 'puncture', delay: 3200 },
+      { service: 'ambulance', delay: 800 },
     ];
 
     services.forEach(({ service, delay }) => {
-      // Set to 'sending' immediately (or at half the delay)
       const sendingTimer = window.setTimeout(() => {
         setDispatchEntries(prev =>
           prev.map(e => e.service === service ? { ...e, status: 'sending' } : e)
         );
       }, delay);
 
-      // Then set to 'sent' after a short sending duration
       const sentTimer = window.setTimeout(() => {
         setDispatchEntries(prev =>
           prev.map(e => e.service === service ? { ...e, status: 'sent', timestamp: Date.now() } : e)
@@ -70,13 +65,12 @@ export default function App() {
     });
   }, []);
 
-  // Handle crash detection — auto-trigger failsafe with shorter countdown
+  // Handle crash detection — auto-trigger failsafe; dispatch happens via onExpire countdown
   const handleCrashDetected = useCallback(() => {
     setCrashTriggered(true);
     setActiveView('failsafe');
     setIsEmergencyTriggered(true);
-    dispatchToAllServices();
-  }, [dispatchToAllServices]);
+  }, []);
 
   // Handle fall/impact detection — increment signal to start auto-SOS countdown on Dashboard
   const handleImpactDetected = useCallback(() => {
@@ -143,8 +137,8 @@ export default function App() {
   const handleSOSPress = useCallback(() => {
     setActiveView('failsafe');
     setIsEmergencyTriggered(true);
-    dispatchToAllServices();
-  }, [dispatchToAllServices]);
+    // Dispatch happens after 10-second FailsafeUI countdown via onExpire
+  }, []);
 
   const handleCancelEmergency = useCallback(() => {
     setActiveView('dashboard');
