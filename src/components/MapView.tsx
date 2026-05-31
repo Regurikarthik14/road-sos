@@ -131,6 +131,10 @@ function generateLocations(
       { name: `Apex Towing ${cityName}`, ...d(2.2, -2.0), eta: eta(3.0), status: 'Available', ...offset(2.2, -2.0) },
       { name: `${cityName} City Wrecker`, ...d(-2.8, 0.5), eta: eta(2.9), status: 'On Call', ...offset(-2.8, 0.5) },
     ],
+    ambulance: [
+      { name: `${cityName} Emergency Medical Services`, ...d(0.5, -1.5), eta: eta(1.6), status: 'Available 24/7', ...offset(0.5, -1.5) },
+      { name: `${cityName} Urgent Care Response`, ...d(-1.8, 0.3), eta: eta(1.9), status: 'En Route Ready', ...offset(-1.8, 0.3) },
+    ],
     puncture: [
       { name: `Quick Tire - ${cityName}`, ...d(-1.2, 0.8), eta: eta(1.5), status: 'Open Now', ...offset(-1.2, 0.8) },
       { name: `AutoFix ${cityName} 24h`, ...d(1.0, -2.2), eta: eta(2.4), status: '24 Hour', ...offset(1.0, -2.2) },
@@ -141,6 +145,7 @@ function generateLocations(
 const CATEGORY_COLORS: Record<string, string> = {
   trauma: '#EF4444',
   police: '#3B82F6',
+  ambulance: '#EC4899',
   towing: '#10B981',
   puncture: '#F59E0B',
 };

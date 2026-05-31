@@ -1,6 +1,6 @@
 export type AppView = 'dashboard' | 'chat' | 'failsafe';
 
-export type CategoryChip = 'trauma' | 'police' | 'towing' | 'puncture';
+export type CategoryChip = 'trauma' | 'police' | 'ambulance' | 'towing' | 'puncture';
 
 export interface CategoryInfo {
   id: CategoryChip;
@@ -25,6 +25,7 @@ export interface ChatMessage {
 export const CATEGORIES: CategoryInfo[] = [
   { id: 'trauma', label: 'Trauma Center', icon: '🏥' },
   { id: 'police', label: 'Police', icon: '👮' },
+  { id: 'ambulance', label: 'Ambulance', icon: '🚑' },
   { id: 'towing', label: 'Towing', icon: '🛻' },
   { id: 'puncture', label: 'Puncture Shop', icon: '🔧' },
 ];
