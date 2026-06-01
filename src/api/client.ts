@@ -150,6 +150,41 @@ export async function createPassword(
   return { token: data.token!, user: data.user! };
 }
 
+export async function register(
+  email: string,
+  phone: string,
+  password: string,
+  profileData?: {
+    displayName?: string;
+    age?: string;
+    bloodType?: string;
+    emergencyContact?: string;
+  }
+): Promise<{ token: string; user: UserProfile }> {
+  const body: Record<string, any> = { password };
+  if (email) body.email = email;
+  if (phone) body.phone = phone;
+  if (profileData) {
+    if (profileData.displayName !== undefined) body.displayName = profileData.displayName;
+    if (profileData.age !== undefined) body.age = profileData.age;
+    if (profileData.bloodType !== undefined) body.bloodType = profileData.bloodType;
+    if (profileData.emergencyContact !== undefined) body.emergencyContact = profileData.emergencyContact;
+  }
+
+  const data = await request<{ token: string; user: UserProfile }>(
+    '/auth/register',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }
+  );
+  if (data.token) {
+    setAuthToken(data.token);
+  }
+  return { token: data.token!, user: data.user! };
+}
+
+
 export async function login(
   email: string,
   password: string

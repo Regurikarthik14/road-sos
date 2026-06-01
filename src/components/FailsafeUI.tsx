@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { DEFAULT_MEDICAL, SOS_MORSE } from '../types';
+import { SOS_MORSE } from '../types';
 import type { DispatchEntry } from '../types';
 import type { UserLocation } from '../hooks/useGeolocation';
 import { useAuth } from '../context/AuthContext';

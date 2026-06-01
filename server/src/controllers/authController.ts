@@ -259,6 +259,82 @@ export async function createPassword(req: Request, res: Response) {
 }
 
 // =========================================================
+// POST /api/auth/register
+// =========================================================
+export async function register(req: Request, res: Response) {
+  try {
+    const { email, phone, password, displayName, age, bloodType, emergencyContact } = req.body;
+
+    const identifier = email || phone;
+    if (!identifier || !password) {
+      res.status(400).json({ error: 'Email/phone and password are required' });
+      return;
+    }
+
+    if (password.length < 6) {
+      res.status(400).json({ error: 'Password must be at least 6 characters' });
+      return;
+    }
+
+    // Check for existing user
+    const orConditions: Record<string, unknown>[] = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone });
+
+    if (orConditions.length > 0) {
+      const existing = await User.findOne({ $or: orConditions });
+      if (existing) {
+        res.status(409).json({ error: 'An account with this email or phone already exists' });
+        return;
+      }
+    }
+
+    // Hash password and create user
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const uniqueId = generateUniqueId();
+
+    const userData: Record<string, unknown> = {
+      password: hashedPassword,
+      uniqueId,
+      displayName: displayName || '',
+      medicalInfo: {
+        bloodType: bloodType || '',
+        emergencyContact: emergencyContact || '',
+        allergies: '',
+        medications: '',
+        age: age || '',
+      },
+      createdAt: new Date(),
+      lastLoginAt: new Date(),
+    };
+    if (email) userData.email = email.toLowerCase().trim();
+    if (phone) userData.phone = phone;
+
+    const user = await User.create(userData);
+
+    const token = signToken({ uid: user._id.toString(), type: 'auth' });
+
+    res.status(201).json({
+      message: `Account created! Your unique ID: ${uniqueId}`,
+      token,
+      user: {
+        uid: user._id.toString(),
+        uniqueId: user.uniqueId,
+        email: user.email || '',
+        phone: user.phone || '',
+        displayName: user.displayName,
+        medicalInfo: user.medicalInfo,
+        createdAt: user.createdAt.getTime(),
+        lastLoginAt: user.lastLoginAt.getTime(),
+      },
+    });
+  } catch (err) {
+    console.error('register error:', err);
+    res.status(500).json({ error: 'Failed to create account' });
+  }
+}
+
+// =========================================================
 // POST /api/auth/login
 // =========================================================
 export async function login(req: Request, res: Response) {

@@ -3,6 +3,7 @@ import {
   sendOtp,
   verifyOtp,
   createPassword,
+  register,
   login,
   forgotPassword,
   resetPassword,
@@ -16,6 +17,7 @@ const router = Router();
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
 router.post('/create-password', createPassword);
+router.post('/register', register);
 router.post('/login', login);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);

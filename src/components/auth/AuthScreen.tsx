@@ -84,8 +84,6 @@ export default function AuthScreen() {
         {authStep === 'welcome' && <WelcomeView onGetStarted={() => setAuthStep('register')} onLogin={() => setAuthStep('login')} />}
         {authStep === 'login' && <LoginView />}
         {authStep === 'register' && <RegisterView />}
-        {authStep === 'otp-verify' && <OTPVerifyView />}
-        {authStep === 'create-password' && <CreatePasswordView />}
         {authStep === 'forgot-password' && <ForgotPasswordView />}
         {authStep === 'reset-sent' && <ResetSentView />}
         {authStep === 'reset-password' && <ResetPasswordFromEmailView />}
@@ -353,351 +351,35 @@ function LoginView() {
 }
 
 // =========================================================
-// Register View — Facebook-style: sign up with email OR phone
+// Register View — Simplified Direct Signup
 // =========================================================
 
 type RegisterMethod = 'email' | 'phone';
 
 function RegisterView() {
-  const { sendOtp, isProcessing, setAuthStep } = useAuth();
+  const { register, isProcessing, setAuthStep } = useAuth();
   const [method, setMethod] = useState<RegisterMethod>('email');
+  
+  // Credentials
   const [email, setEmail] = useState('');
-  const [phoneDigits, setPhoneDigits] = useState('');
-  const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]);
-  const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [localError, setLocalError] = useState('');
-  const countryPickerRef = useRef<HTMLDivElement>(null);
-
-  // Click outside to close country picker
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
-        setShowCountryPicker(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleCountrySelect = (cc: CountryCode) => {
-    setSelectedCountry(cc);
-    setShowCountryPicker(false);
-  };
-
-  const handlePhoneChange = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    setPhoneDigits(digits);
-  };
-
-  const handleSubmit = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    setLocalError('');
-
-    if (method === 'email') {
-      if (!email.trim()) return;
-      if (!email.includes('@') || !email.includes('.')) {
-        setLocalError('Please enter a valid email address.');
-        return;
-      }
-      try {
-        await sendOtp(email.trim(), '');
-        setAuthStep('otp-verify');
-      } catch {
-        // Error handled in AuthContext
-      }
-    } else {
-      if (!phoneDigits.trim()) return;
-      const digits = phoneDigits.replace(/\D/g, '');
-      if (digits.length < 7) {
-        setLocalError('Please enter a complete phone number.');
-        return;
-      }
-      const fullPhone = `${selectedCountry.code}${digits}`;
-      try {
-        await sendOtp('', fullPhone);
-        setAuthStep('otp-verify');
-      } catch {
-        // Error handled in AuthContext
-      }
-    }
-  }, [method, email, phoneDigits, selectedCountry, sendOtp, setAuthStep]);
-
-  const filteredCodes = COUNTRY_CODES;
-
-  return (
-    <div style={styles.viewContainer}>
-      <button style={styles.backBtn} onClick={() => setAuthStep('welcome')} aria-label="Go back">
-        ← Back
-      </button>
-      <h2 style={styles.viewTitle}>Create Account</h2>
-      <p style={styles.viewDescription}>Sign up with your email or phone number</p>
-
-      {/* Method toggle tabs */}
-      <div style={styles.toggleRow}>
-        <button
-          style={{
-            ...styles.toggleTab,
-            ...(method === 'email' ? styles.toggleTabActive : {}),
-          }}
-          onClick={() => setMethod('email')}
-        >
-          📧 Email
-        </button>
-        <button
-          style={{
-            ...styles.toggleTab,
-            ...(method === 'phone' ? styles.toggleTabActive : {}),
-          }}
-          onClick={() => setMethod('phone')}
-        >
-          📱 Phone
-        </button>
-      </div>
-
-      <form onSubmit={handleSubmit} style={styles.form}>
-        {method === 'email' ? (
-          <div style={styles.inputGroup}>
-            <label style={styles.inputLabel}>Email Address</label>
-            <input
-              style={styles.input}
-              type="email"
-              placeholder="your@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              autoFocus
-              required
-            />
-            <span style={styles.inputHint}>We'll send a verification code to your email</span>
-          </div>
-        ) : (
-          <div style={styles.inputGroup}>
-            <label style={styles.inputLabel}>Phone Number</label>
-            <div style={styles.phoneWrapper}>
-              {/* Country Code Picker */}
-              <div ref={countryPickerRef} style={styles.countryPickerWrapper}>
-                <button
-                  type="button"
-                  style={styles.countryPickerBtn}
-                  onClick={() => setShowCountryPicker(!showCountryPicker)}
-                >
-                  <span style={styles.countryFlag}>{selectedCountry.flag}</span>
-                  <span style={styles.countryCodeText}>{selectedCountry.code}</span>
-                  <span style={styles.dropdownArrow}>{showCountryPicker ? '▲' : '▼'}</span>
-                </button>
-                {showCountryPicker && (
-                  <div style={styles.countryDropdown}>
-                    {filteredCodes.map((cc, i) => (
-                      <button
-                        key={`${cc.code}-${cc.name}-${i}`}
-                        type="button"
-                        style={{
-                          ...styles.countryOption,
-                          ...(selectedCountry.code === cc.code && selectedCountry.name === cc.name
-                            ? styles.countryOptionActive
-                            : {}),
-                        }}
-                        onClick={() => handleCountrySelect(cc)}
-                      >
-                        <span style={styles.countryFlag}>{cc.flag}</span>
-                        <span style={styles.countryName}>{cc.name}</span>
-                        <span style={styles.countryCodeOption}>{cc.code}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Phone number input */}
-              <input
-                style={styles.inputPhone}
-                type="tel"
-                placeholder="10-digit phone number"
-                value={phoneDigits}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                autoComplete="tel-national"
-                autoFocus
-                required
-              />
-            </div>
-            <span style={styles.inputHint}>We'll send a verification code via SMS to {selectedCountry.code}</span>
-          </div>
-        )}
-
-        {localError && <div style={styles.localError}>{localError}</div>}
-
-        <button
-          type="submit"
-          style={{
-            ...styles.primaryBtn,
-            ...(isProcessing ? styles.btnDisabled : {}),
-            width: '100%',
-          }}
-          disabled={isProcessing}
-        >
-          {isProcessing ? 'Sending Code...' : 'Send Verification Code'}
-        </button>
-      </form>
-
-      <button style={styles.secondaryBtn} onClick={() => setAuthStep('login')}>
-        Already have an account? <span style={styles.secondaryAccent}>Log In</span>
-      </button>
-    </div>
-  );
-}
-
-// =========================================================
-// OTP Verify View
-// =========================================================
-
-function OTPVerifyView() {
-  const { verifyOtp, isProcessing, setAuthStep, tempData, sendOtp } = useAuth();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  // If devOtp is available (email/SMS not configured), auto-fill it
-  const [autoFilled, setAutoFilled] = useState(false);
-  useEffect(() => {
-    if (tempData.devOtp && tempData.deliveryFailed && !autoFilled) {
-      setOtp(tempData.devOtp.split(''));
-      setAutoFilled(true);
-    }
-  }, [tempData.devOtp, tempData.deliveryFailed, autoFilled]);
-
-  const handleDigitChange = useCallback((index: number, value: string) => {
-    if (value && !/^\d$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-
-    // Auto-advance to next input
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  }, [otp]);
-
-  const handleKeyDown = useCallback((index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  }, [otp]);
-
-  const handleSubmit = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    const code = otp.join('');
-    if (code.length !== 6) return;
-
-    try {
-      const verified = await verifyOtp(code);
-      if (verified) {
-        setAuthStep('create-password');
-      }
-    } catch {
-      // Error handled in AuthContext
-    }
-  }, [otp, verifyOtp, setAuthStep]);
-
-  const handleResend = useCallback(async () => {
-    try {
-      await sendOtp(tempData.email, tempData.phone);
-      setOtp(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
-    } catch {
-      // Error handled in AuthContext
-    }
-  }, [tempData, sendOtp]);
-
-  const isEmailReg = !!tempData.email;
-  const verifyTarget = isEmailReg ? tempData.email : tempData.phone;
-  const verifyLabel = isEmailReg ? 'Email' : 'Phone';
-
-  return (
-    <div style={styles.viewContainer}>
-      <button style={styles.backBtn} onClick={() => setAuthStep('register')} aria-label="Go back">
-        ← Back
-      </button>
-
-      <div style={styles.otpIcon}>{isEmailReg ? '✉️' : '📱'}</div>
-      <h2 style={styles.viewTitle}>Verify {verifyLabel}</h2>
-      <p style={styles.viewDescription}>
-        {tempData.devOtp
-          ? 'Demo mode — the code is pre-filled below. Click Verify to continue.'
-          : <>Enter the 6-digit code sent to <strong>{verifyTarget}</strong></>
-        }
-      </p>
-
-      {tempData.deliveryFailed && (
-        <div style={styles.demoWarningBanner}>
-          <span style={styles.warningIcon}>⚠️</span>
-          <div style={styles.warningTextContainer}>
-            <strong style={styles.warningTitle}>Delivery Failure</strong>
-            <span style={styles.warningMessage}>
-              We couldn't deliver the verification code to your real {isEmailReg ? 'email' : 'phone'} due to unconfigured/incorrect credentials ({tempData.deliveryError}). 
-              <strong> Falling back to Demo Mode:</strong> The code has been auto-filled for your convenience.
-            </span>
-          </div>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} style={styles.form}>
-        <div style={styles.otpRow}>
-          {otp.map((digit, i) => (
-            <input
-              key={i}
-              ref={(el) => { inputRefs.current[i] = el; }}
-              style={styles.otpInput}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => handleDigitChange(i, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(i, e)}
-              autoFocus={i === 0}
-              aria-label={`Digit ${i + 1}`}
-            />
-          ))}
-        </div>
-
-        <button
-          type="submit"
-          style={{
-            ...styles.primaryBtn,
-            ...(isProcessing || otp.join('').length !== 6 ? styles.btnDisabled : {}),
-            width: '100%',
-          }}
-          disabled={isProcessing || otp.join('').length !== 6}
-        >
-          {isProcessing ? 'Verifying...' : 'Verify Code'}
-        </button>
-      </form>
-
-      <button style={styles.linkBtn} onClick={handleResend} disabled={isProcessing}>
-        Resend code
-      </button>
-    </div>
-  );
-}
-
-// =========================================================
-// Create Password View
-// =========================================================
-
-function CreatePasswordView() {
-  const { createPassword, isProcessing, setAuthStep, tempData } = useAuth();
-  const [displayName, setDisplayName] = useState('');
-  const [age, setAge] = useState('');
-  const [bloodType, setBloodType] = useState('A+');
   const [phoneDigits, setPhoneDigits] = useState('');
   const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[3]); // Default to India (+91)
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const countryPickerRef = useRef<HTMLDivElement>(null);
-
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [localError, setLocalError] = useState('');
 
-  // Handle click outside country picker
+  // Personal & Medical Info
+  const [displayName, setDisplayName] = useState('');
+  const [age, setAge] = useState('');
+  const [bloodType, setBloodType] = useState('A+');
+  const [emergencyContact, setEmergencyContact] = useState('');
+
+  const [localError, setLocalError] = useState('');
+  const countryPickerRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close country picker
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
@@ -735,10 +417,22 @@ function CreatePasswordView() {
       return;
     }
 
-    let finalPhone = tempData.phone || '';
-    if (!tempData.phone) {
+    let finalEmail = '';
+    let finalPhone = '';
+
+    if (method === 'email') {
+      if (!email.trim()) {
+        setLocalError('Please enter your email.');
+        return;
+      }
+      if (!email.includes('@') || !email.includes('.')) {
+        setLocalError('Please enter a valid email address.');
+        return;
+      }
+      finalEmail = email.trim();
+    } else {
       if (!phoneDigits.trim()) {
-        setLocalError('Please enter your mobile number.');
+        setLocalError('Please enter your phone number.');
         return;
       }
       if (phoneDigits.length < 7) {
@@ -758,35 +452,56 @@ function CreatePasswordView() {
     }
 
     try {
-      await createPassword(
+      await register(
+        finalEmail,
+        finalPhone,
         password,
         {
           displayName: displayName.trim(),
           age: age.trim(),
           bloodType,
-          emergencyContact: '',
-        },
-        !tempData.phone ? finalPhone : undefined
+          emergencyContact: emergencyContact.trim(),
+        }
       );
     } catch {
-      // Error is handled by AuthContext
+      // Error handled in AuthContext
     }
-  }, [displayName, age, bloodType, phoneDigits, selectedCountry, password, confirmPassword, createPassword, tempData]);
-
-  const hasPhoneAlready = !!tempData.phone;
+  }, [method, email, phoneDigits, selectedCountry, displayName, age, bloodType, emergencyContact, password, confirmPassword, register]);
 
   return (
     <div style={styles.viewContainer}>
-      <button style={styles.backBtn} onClick={() => setAuthStep('otp-verify')} aria-label="Go back">
+      <button style={styles.backBtn} onClick={() => setAuthStep('welcome')} aria-label="Go back">
         ← Back
       </button>
+      <h2 style={styles.viewTitle}>Create Account</h2>
+      <p style={styles.viewDescription}>Fill in your details to sign up instantly</p>
 
-      <div style={styles.otpIcon}>📋</div>
-      <h2 style={styles.viewTitle}>Complete Your Profile</h2>
-      <p style={styles.viewDescription}>Please provide your health and safety details to complete registration</p>
+      {/* Method toggle tabs */}
+      <div style={styles.toggleRow}>
+        <button
+          type="button"
+          style={{
+            ...styles.toggleTab,
+            ...(method === 'email' ? styles.toggleTabActive : {}),
+          }}
+          onClick={() => setMethod('email')}
+        >
+          📧 Email
+        </button>
+        <button
+          type="button"
+          style={{
+            ...styles.toggleTab,
+            ...(method === 'phone' ? styles.toggleTabActive : {}),
+          }}
+          onClick={() => setMethod('phone')}
+        >
+          📱 Phone
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} style={styles.form}>
-        {/* Section 1: Health & Profile details */}
+        {/* Section 1: Personal & Medical Info */}
         <div style={{ ...styles.sectionDivider, marginTop: '4px' }}>
           <span style={styles.sectionTitle}>📋 Personal & Medical Info</span>
         </div>
@@ -845,26 +560,37 @@ function CreatePasswordView() {
         </div>
 
         <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Mobile Number</label>
-          {hasPhoneAlready ? (
-            <div style={styles.verifiedPhoneContainer}>
-              <span style={styles.verifiedIcon}>✓ Verified</span>
-              <input
-                style={{
-                  ...styles.input,
-                  opacity: 0.8,
-                  background: 'rgba(16,185,129,0.06)',
-                  borderColor: 'rgba(16,185,129,0.2)',
-                  color: 'var(--text-primary)',
-                  fontWeight: '600',
-                  cursor: 'not-allowed',
-                }}
-                type="text"
-                value={tempData.phone}
-                disabled
-              />
-            </div>
-          ) : (
+          <label style={styles.inputLabel}>Emergency Contact Phone (Optional)</label>
+          <input
+            style={styles.input}
+            type="tel"
+            placeholder="e.g. +91 99999 99999"
+            value={emergencyContact}
+            onChange={(e) => setEmergencyContact(e.target.value)}
+          />
+        </div>
+
+        {/* Section 2: Account Details */}
+        <div style={{ ...styles.sectionDivider, marginTop: '12px' }}>
+          <span style={styles.sectionTitle}>🔑 Account Credentials</span>
+        </div>
+
+        {method === 'email' ? (
+          <div style={styles.inputGroup}>
+            <label style={styles.inputLabel}>Email Address</label>
+            <input
+              style={styles.input}
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
+        ) : (
+          <div style={styles.inputGroup}>
+            <label style={styles.inputLabel}>Phone Number</label>
             <div style={styles.phoneWrapper}>
               {/* Country Code Picker */}
               <div ref={countryPickerRef} style={styles.countryPickerWrapper}>
@@ -909,14 +635,10 @@ function CreatePasswordView() {
                 required
               />
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Section 2: Security */}
-        <div style={{ ...styles.sectionDivider, marginTop: '12px' }}>
-          <span style={styles.sectionTitle}>🔐 Security Details</span>
-        </div>
-
+        {/* Section 3: Password */}
         <div style={styles.inputGroup}>
           <label style={styles.inputLabel}>Password</label>
           <div style={styles.passwordWrapper}>
@@ -992,12 +714,17 @@ function CreatePasswordView() {
           }}
           disabled={isProcessing || !password || !confirmPassword || !displayName || !age}
         >
-          {isProcessing ? 'Creating Account...' : 'Create Account'}
+          {isProcessing ? 'Registering...' : 'Register & Log In'}
         </button>
       </form>
+
+      <button style={styles.secondaryBtn} onClick={() => setAuthStep('login')}>
+        Already have an account? <span style={styles.secondaryAccent}>Log In</span>
+      </button>
     </div>
   );
 }
+
 
 // =========================================================
 // Forgot Password View
@@ -1252,14 +979,15 @@ function getPasswordStrength(password: string): { percent: number; color: string
 const styles: Record<string, React.CSSProperties> = {
   container: {
     height: '100%',
+    width: '100%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     background: 'var(--bg-primary)',
     position: 'relative',
-    overflow: 'hidden',
-    padding: '24px 20px',
+    overflowY: 'auto',
+    padding: '32px 20px',
+    boxSizing: 'border-box',
   },
   bgGlow: {
     position: 'absolute',
@@ -1355,8 +1083,7 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 1,
     display: 'flex',
     flexDirection: 'column',
-    flex: 1,
-    justifyContent: 'center',
+    paddingBottom: '24px',
   },
   viewContainer: {
     display: 'flex',

@@ -38,6 +38,17 @@ interface AuthContextValue {
     },
     overridePhone?: string
   ) => Promise<void>;
+  register: (
+    email: string,
+    phone: string,
+    password: string,
+    profileData?: {
+      displayName?: string;
+      age?: string;
+      bloodType?: string;
+      emergencyContact?: string;
+    }
+  ) => Promise<void>;
   updateProfile: (data: {
     displayName?: string;
     age?: string;
@@ -258,6 +269,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [tempData]);
 
   // =========================================================
+  // Register — Direct Simplified Signup
+  // =========================================================
+  const registerFn = useCallback(async (
+    email: string,
+    phone: string,
+    password: string,
+    profileData?: {
+      displayName?: string;
+      age?: string;
+      bloodType?: string;
+      emergencyContact?: string;
+    }
+  ) => {
+    setIsProcessing(true);
+    setError(null);
+    try {
+      const { user: profile } = await api.register(email, phone, password, profileData);
+      setUser(profile);
+      setIsAuthenticated(true);
+      setSuccessMessage(`Account created! Your unique ID: ${profile.uniqueId}`);
+    } catch (err: any) {
+      const msg = err.message || '';
+      if (msg.includes('already registered') || msg.includes('already exists')) {
+        setError('An account with this email or phone already exists.');
+      } else if (msg.includes('at least 6')) {
+        setError('Password should be at least 6 characters.');
+      } else {
+        setError(msg || 'Failed to create account. Please try again.');
+      }
+      throw err;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  // =========================================================
   // Forgot Password
   // =========================================================
   const forgotPassword = useCallback(async (email: string) => {
@@ -349,6 +396,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sendOtp,
     verifyOtp,
     createPassword: createPasswordFn,
+    register: registerFn,
     updateProfile,
     forgotPassword,
     resetPassword: resetPasswordFn,
