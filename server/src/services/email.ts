@@ -13,7 +13,7 @@ function getClient(): Resend {
   return resendClient;
 }
 
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Raksha <noreply@raksha.app>';
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
 export async function sendResetEmail(email: string, resetLink: string): Promise<void> {
   const client = getClient();

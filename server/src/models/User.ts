@@ -11,6 +11,7 @@ export interface IUser extends Document {
     emergencyContact: string;
     allergies: string;
     medications: string;
+    age: string;
   };
   resetToken?: string;
   resetTokenExpires?: Date;
@@ -29,6 +30,7 @@ const userSchema = new Schema<IUser>({
     emergencyContact: { type: String, default: '' },
     allergies: { type: String, default: '' },
     medications: { type: String, default: '' },
+    age: { type: String, default: '' },
   },
   resetToken: { type: String },
   resetTokenExpires: { type: Date },

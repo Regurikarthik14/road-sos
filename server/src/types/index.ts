@@ -9,6 +9,7 @@ export interface UserProfile {
     emergencyContact: string;
     allergies: string;
     medications: string;
+    age: string;
   };
   createdAt: number;
   lastLoginAt: number;

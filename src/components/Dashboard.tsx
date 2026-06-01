@@ -7,8 +7,8 @@ import CrashDetectBanner from './CrashDetectBanner';
 import HardwareStatusPanel from './HardwareStatus';
 import FireDetection from './FireDetection';
 import type { CrashDetectStatus } from '../hooks/useCrashDetection';
-
 import type { UserLocation } from '../hooks/useGeolocation';
+import { useAuth } from '../context/AuthContext';
 
 interface DashboardProps {
   onSOSPress: () => void;
@@ -27,6 +27,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onSOSPress, onChatPress, crashDetection, userLocation, geoStatus, fallSignal, theme, onToggleTheme }: DashboardProps) {
+  const { user, updateProfile, logout } = useAuth();
   const [activeChip, setActiveChip] = useState<CategoryInfo | null>(null);
   const [autoSOSCountdown, setAutoSOSCountdown] = useState<number | null>(null);
   const prevFallSignalRef = useRef(fallSignal);
@@ -36,6 +37,65 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection, use
   const audioCtxRef = useRef<AudioContext | null>(null);
   const alertIntervalRef = useRef<number | null>(null);
   const alertGainRef = useRef<GainNode | null>(null);
+
+  // Profile Drawer & Editing States
+  const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAge, setEditAge] = useState('');
+  const [editBloodType, setEditBloodType] = useState('A+');
+  const [editAllergies, setEditAllergies] = useState('');
+  const [editMedications, setEditMedications] = useState('');
+  const [editEmergencyContact, setEditEmergencyContact] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  // Initialize fields when drawer opens
+  useEffect(() => {
+    if (user) {
+      setEditName(user.displayName || '');
+      setEditAge(user.medicalInfo?.age || '');
+      setEditBloodType(user.medicalInfo?.bloodType || 'A+');
+      setEditAllergies(user.medicalInfo?.allergies || '');
+      setEditMedications(user.medicalInfo?.medications || '');
+      setEditEmergencyContact(user.medicalInfo?.emergencyContact || '');
+    }
+  }, [user, showProfileDrawer]);
+
+  const handleProfileSave = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSaving(true);
+    setProfileError(null);
+
+    if (!editName.trim()) {
+      setProfileError('Name cannot be empty.');
+      setProfileSaving(false);
+      return;
+    }
+
+    const ageNum = Number(editAge);
+    if (!editAge.trim() || isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      setProfileError('Please enter a valid age (1-120).');
+      setProfileSaving(false);
+      return;
+    }
+
+    try {
+      await updateProfile({
+        displayName: editName.trim(),
+        age: editAge.trim(),
+        bloodType: editBloodType,
+        emergencyContact: editEmergencyContact.trim(),
+        allergies: editAllergies.trim(),
+        medications: editMedications.trim(),
+      });
+      setIsEditingProfile(false);
+    } catch (err: any) {
+      setProfileError(err.message || 'Failed to update profile.');
+    } finally {
+      setProfileSaving(false);
+    }
+  }, [editName, editAge, editBloodType, editEmergencyContact, editAllergies, editMedications, updateProfile]);
 
   // Watch fallSignal for changes — parent increments this when DeviceMotion detects impact
   useEffect(() => {
@@ -227,7 +287,12 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection, use
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header} className="responsive-header">
-        <span style={styles.logo} className="responsive-logo">🛡️ Raksha</span>
+        <div style={styles.avatarContainer} onClick={() => { setShowProfileDrawer(true); setIsEditingProfile(false); }} aria-label="Open Profile Details" role="button">
+          <div style={styles.avatarCircle}>
+            {user?.displayName?.[0]?.toUpperCase() || '?'}
+          </div>
+          <span style={styles.avatarName}>{user?.displayName || 'User'}</span>
+        </div>
         <div style={styles.headerRight}>
           <button
             onClick={onToggleTheme}
@@ -390,6 +455,201 @@ export default function Dashboard({ onSOSPress, onChatPress, crashDetection, use
       {/* Map overlay when category is active — covers everything */}
       {activeChip && (
         <MapView activeCategory={activeChip} onClose={() => setActiveChip(null)} userLocation={userLocation} geoStatus={geoStatus} />
+      )}
+
+      {/* Profile Drawer */}
+      {showProfileDrawer && (
+        <div style={styles.drawerBackdrop} onClick={() => setShowProfileDrawer(false)}>
+          <div style={styles.drawerContainer} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.drawerHeader}>
+              <h3 style={styles.drawerTitle}>🏥 Health Profile</h3>
+              <button style={styles.drawerCloseBtn} onClick={() => setShowProfileDrawer(false)}>✕</button>
+            </div>
+
+            <div style={styles.drawerScrollContent}>
+              {/* User Avatar & unique ID badge */}
+              <div style={styles.drawerHero}>
+                <div style={styles.drawerAvatar}>
+                  {user?.displayName?.[0]?.toUpperCase() || '?'}
+                </div>
+                <h4 style={styles.drawerName}>{user?.displayName || 'User'}</h4>
+                <div style={styles.idBadge}>
+                  <span style={styles.idBadgeLabel}>Unique ID:</span>
+                  <code style={styles.idBadgeValue}>{user?.uniqueId}</code>
+                </div>
+              </div>
+
+              {profileError && (
+                <div style={styles.drawerError}>
+                  ⚠️ {profileError}
+                </div>
+              )}
+
+              {isEditingProfile ? (
+                <form onSubmit={handleProfileSave} style={styles.drawerForm}>
+                  <div style={styles.drawerInputGroup}>
+                    <label style={styles.drawerInputLabel}>Full Name</label>
+                    <input
+                      style={styles.drawerInput}
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ ...styles.drawerInputGroup, flex: 1 }}>
+                      <label style={styles.drawerInputLabel}>Age</label>
+                      <input
+                        style={styles.drawerInput}
+                        type="text"
+                        inputMode="numeric"
+                        value={editAge}
+                        onChange={(e) => setEditAge(e.target.value.replace(/\D/g, ''))}
+                        required
+                      />
+                    </div>
+                    <div style={{ ...styles.drawerInputGroup, flex: 1.2 }}>
+                      <label style={styles.drawerInputLabel}>Blood Group</label>
+                      <select
+                        style={styles.drawerSelect}
+                        value={editBloodType}
+                        onChange={(e) => setEditBloodType(e.target.value)}
+                      >
+                        {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bt) => (
+                          <option key={bt} value={bt}>{bt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={styles.drawerInputGroup}>
+                    <label style={styles.drawerInputLabel}>Emergency Contact</label>
+                    <input
+                      style={styles.drawerInput}
+                      type="tel"
+                      placeholder="Emergency phone number"
+                      value={editEmergencyContact}
+                      onChange={(e) => setEditEmergencyContact(e.target.value.replace(/\D/g, ''))}
+                    />
+                  </div>
+
+                  <div style={styles.drawerInputGroup}>
+                    <label style={styles.drawerInputLabel}>Allergies</label>
+                    <input
+                      style={styles.drawerInput}
+                      type="text"
+                      placeholder="e.g. Penicillin, Peanuts (or None)"
+                      value={editAllergies}
+                      onChange={(e) => setEditAllergies(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={styles.drawerInputGroup}>
+                    <label style={styles.drawerInputLabel}>Current Medications</label>
+                    <input
+                      style={styles.drawerInput}
+                      type="text"
+                      placeholder="e.g. Aspirin 81mg daily"
+                      value={editMedications}
+                      onChange={(e) => setEditMedications(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={styles.drawerActionRow}>
+                    <button
+                      type="button"
+                      style={styles.drawerCancelBtn}
+                      onClick={() => setIsEditingProfile(false)}
+                      disabled={profileSaving}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={styles.drawerSaveBtn}
+                      disabled={profileSaving}
+                    >
+                      {profileSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div style={styles.drawerDetails}>
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailIcon}>📞</span>
+                    <div style={styles.detailTextContainer}>
+                      <span style={styles.detailLabel}>Mobile Number</span>
+                      <span style={styles.detailValue}>{user?.phone || user?.email || 'N/A'}</span>
+                    </div>
+                    <span style={styles.verifiedBadge}>Verified</span>
+                  </div>
+
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailIcon}>🎂</span>
+                    <div style={styles.detailTextContainer}>
+                      <span style={styles.detailLabel}>Age</span>
+                      <span style={styles.detailValue}>{user?.medicalInfo?.age || 'Not set'} Years</span>
+                    </div>
+                  </div>
+
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailIcon}>🩸</span>
+                    <div style={styles.detailTextContainer}>
+                      <span style={styles.detailLabel}>Blood Group</span>
+                      <span style={{ ...styles.detailValue, color: '#EF4444', fontWeight: '700' }}>
+                        {user?.medicalInfo?.bloodType || 'Not set'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailIcon}>🚨</span>
+                    <div style={styles.detailTextContainer}>
+                      <span style={styles.detailLabel}>Emergency Contact</span>
+                      <span style={styles.detailValue}>{user?.medicalInfo?.emergencyContact || 'Not set'}</span>
+                    </div>
+                  </div>
+
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailIcon}>⚠️</span>
+                    <div style={styles.detailTextContainer}>
+                      <span style={styles.detailLabel}>Allergies</span>
+                      <span style={styles.detailValue}>{user?.medicalInfo?.allergies || 'None reported'}</span>
+                    </div>
+                  </div>
+
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailIcon}>💊</span>
+                    <div style={styles.detailTextContainer}>
+                      <span style={styles.detailLabel}>Medications</span>
+                      <span style={styles.detailValue}>{user?.medicalInfo?.medications || 'None'}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    style={styles.drawerEditBtn}
+                    onClick={() => { setIsEditingProfile(true); setProfileError(null); }}
+                  >
+                    ✏️ Edit Details
+                  </button>
+
+                  <button
+                    style={styles.drawerLogoutBtn}
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to log out?')) {
+                        logout();
+                      }
+                    }}
+                  >
+                    🚪 Log Out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -656,5 +916,294 @@ const styles: Record<string, React.CSSProperties> = {
   },
   micIcon: {
     fontSize: '16px',
+  },
+  avatarContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    cursor: 'pointer',
+    position: 'relative',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  avatarCircle: {
+    width: '38px',
+    height: '38px',
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #EF4444 0%, #dc2626 100%)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: '700',
+    fontSize: '15px',
+    boxShadow: '0 2px 8px rgba(239,68,68,0.2)',
+    border: '2px solid rgba(255,255,255,0.1)',
+  },
+  avatarName: {
+    fontSize: '9px',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+    marginTop: '3px',
+    textAlign: 'center',
+    maxWidth: '56px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  drawerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    background: 'rgba(0, 0, 0, 0.4)',
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
+    zIndex: 1000,
+    display: 'flex',
+    justifyContent: 'flex-start',
+    animation: 'fade-in 0.2s ease',
+  },
+  drawerContainer: {
+    width: '85%',
+    maxWidth: '320px',
+    height: '100%',
+    background: 'var(--bg-primary)',
+    borderRight: '1px solid var(--border-light)',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '4px 0 24px rgba(0, 0, 0, 0.2)',
+    boxSizing: 'border-box',
+  },
+  drawerHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px',
+    borderBottom: '1px solid var(--border-light)',
+  },
+  drawerTitle: {
+    fontSize: '16px',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+    margin: 0,
+  },
+  drawerCloseBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-secondary)',
+    fontSize: '16px',
+    cursor: 'pointer',
+    padding: '4px',
+  },
+  drawerScrollContent: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  drawerHero: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 0 16px 0',
+    borderBottom: '1px solid var(--border-light)',
+  },
+  drawerAvatar: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #EF4444 0%, #dc2626 100%)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: '800',
+    fontSize: '24px',
+    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+    border: '2px solid rgba(255, 255, 255, 0.1)',
+  },
+  drawerName: {
+    fontSize: '18px',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+    margin: 0,
+  },
+  idBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    background: 'var(--bg-tertiary)',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-light)',
+  },
+  idBadgeLabel: {
+    fontSize: '10px',
+    fontWeight: '600',
+    color: 'var(--text-dim)',
+    textTransform: 'uppercase',
+  },
+  idBadgeValue: {
+    fontSize: '11px',
+    fontWeight: '700',
+    color: 'var(--text-secondary)',
+    fontFamily: 'monospace',
+  },
+  drawerError: {
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.2)',
+    color: '#EF4444',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: '500',
+  },
+  drawerForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  },
+  drawerInputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  drawerInputLabel: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  },
+  drawerInput: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    border: '1px solid var(--border-light)',
+    background: 'var(--bg-secondary)',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+    fontWeight: '500',
+    outline: 'none',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  },
+  drawerSelect: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    border: '1px solid var(--border-light)',
+    background: 'var(--bg-secondary)',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+    fontWeight: '500',
+    outline: 'none',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  },
+  drawerActionRow: {
+    display: 'flex',
+    gap: '10px',
+    marginTop: '8px',
+  },
+  drawerCancelBtn: {
+    flex: 1,
+    padding: '10px',
+    borderRadius: '8px',
+    border: '1px solid var(--border-light)',
+    background: 'transparent',
+    color: 'var(--text-secondary)',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  drawerSaveBtn: {
+    flex: 1.5,
+    padding: '10px',
+    borderRadius: '8px',
+    border: 'none',
+    background: 'linear-gradient(135deg, #EF4444 0%, #dc2626 100%)',
+    color: '#fff',
+    fontSize: '13px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)',
+  },
+  drawerDetails: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  detailRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    background: 'var(--bg-secondary)',
+    border: '1px solid var(--border-light)',
+  },
+  detailIcon: {
+    fontSize: '18px',
+  },
+  detailTextContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  detailLabel: {
+    fontSize: '10px',
+    fontWeight: '600',
+    color: 'var(--text-dim)',
+    textTransform: 'uppercase',
+  },
+  detailValue: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: 'var(--text-primary)',
+  },
+  verifiedBadge: {
+    fontSize: '10px',
+    fontWeight: '700',
+    color: '#10B981',
+    background: 'rgba(16, 185, 129, 0.1)',
+    padding: '2px 6px',
+    borderRadius: '10px',
+  },
+  drawerEditBtn: {
+    padding: '12px',
+    borderRadius: '8px',
+    border: '1px solid var(--border-light)',
+    background: 'var(--bg-secondary)',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    marginTop: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    transition: 'all 0.2s ease',
+  },
+  drawerLogoutBtn: {
+    padding: '12px',
+    borderRadius: '8px',
+    border: '1px solid rgba(239, 68, 68, 0.2)',
+    background: 'rgba(239, 68, 68, 0.05)',
+    color: '#EF4444',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    transition: 'all 0.2s ease',
   },
 };

@@ -3,7 +3,7 @@ import { type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { User } from '../models/User.js';
 import { Otp } from '../models/Otp.js';
-import { sendSmsOtp } from '../services/sms.js';
+import { sendSmsOtp, sendTwilioVerify, checkTwilioVerify } from '../services/sms.js';
 import { sendResetEmail, sendEmailOtp } from '../services/email.js';
 import { generateOtpCode, generateUniqueId, generateResetToken } from '../services/otpService.js';
 import { signToken, signTempToken, JWT_SECRET } from '../middleware/auth.js';
@@ -34,9 +34,10 @@ export async function sendOtp(req: Request, res: Response) {
       res.status(409).json({ error: `${label} is already registered. Please login instead.` });
       return;
     }
+    const useTwilioVerify = !isEmail && !!process.env.TWILIO_VERIFY_SERVICE_SID;
 
     // Generate OTP
-    const code = generateOtpCode();
+    const code = useTwilioVerify ? 'twilio_verify' : generateOtpCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Store OTP with the contact as identifier
@@ -46,17 +47,31 @@ export async function sendOtp(req: Request, res: Response) {
     console.log(`\n🔐 OTP for ${contact}: ${code} (expires in 10 min)\n`);
 
     // Send OTP via the chosen method
+    let deliveryFailed = false;
+    let deliveryError = '';
     if (isEmail) {
       try {
         await sendEmailOtp(email, code);
-      } catch (emailErr) {
+      } catch (emailErr: any) {
+        deliveryFailed = true;
+        deliveryError = emailErr.message || 'Resend error';
         console.error('Email OTP failed:', emailErr);
         console.log('⚠️  Email not configured — use the OTP code printed above to verify');
+      }
+    } else if (useTwilioVerify) {
+      try {
+        await sendTwilioVerify(phone);
+      } catch (verifyErr: any) {
+        deliveryFailed = true;
+        deliveryError = verifyErr.message || 'Twilio Verify error';
+        console.error('Twilio Verify send failed:', verifyErr);
       }
     } else {
       try {
         await sendSmsOtp(phone, code);
-      } catch (smsErr) {
+      } catch (smsErr: any) {
+        deliveryFailed = true;
+        deliveryError = smsErr.message || 'Twilio error';
         console.warn('SMS failed:', smsErr);
         console.log('⚠️  SMS not configured — use the OTP code printed above to verify');
       }
@@ -65,8 +80,18 @@ export async function sendOtp(req: Request, res: Response) {
     const response: Record<string, unknown> = {
       message: 'Verification code sent',
       [isEmail ? 'email' : 'phone']: contact,
-      devOtp: code, // Always shown for hackathon demo
+      deliveryFailed,
+      deliveryError: deliveryFailed ? deliveryError : undefined,
     };
+
+    if (deliveryFailed && useTwilioVerify) {
+      const fallbackCode = generateOtpCode();
+      await Otp.updateOne({ phone: contact, code: 'twilio_verify' }, { code: fallbackCode });
+      response.devOtp = fallbackCode;
+    } else {
+      response.devOtp = useTwilioVerify ? 'Twilio Verify Active (SMS sent to device)' : code;
+    }
+
     res.json(response);
   } catch (err) {
     console.error('sendOtp error:', err);
@@ -87,7 +112,7 @@ export async function verifyOtp(req: Request, res: Response) {
       return;
     }
 
-    const otpRecord = await Otp.findOne({ phone: contact, code });
+    const otpRecord = await Otp.findOne({ phone: contact });
 
     if (!otpRecord) {
       res.status(400).json({ error: 'Invalid verification code' });
@@ -98,6 +123,25 @@ export async function verifyOtp(req: Request, res: Response) {
       await Otp.deleteOne({ _id: otpRecord._id });
       res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
       return;
+    }
+
+    if (otpRecord.code === 'twilio_verify') {
+      try {
+        const isApproved = await checkTwilioVerify(contact, code);
+        if (!isApproved) {
+          res.status(400).json({ error: 'Invalid verification code' });
+          return;
+        }
+      } catch (verifyErr: any) {
+        console.error('Twilio Verify check failed:', verifyErr);
+        res.status(400).json({ error: verifyErr.message || 'Verification failed. Please check your code.' });
+        return;
+      }
+    } else {
+      if (otpRecord.code !== code) {
+        res.status(400).json({ error: 'Invalid verification code' });
+        return;
+      }
     }
 
     // Clean up used OTP
@@ -118,7 +162,7 @@ export async function verifyOtp(req: Request, res: Response) {
 // =========================================================
 export async function createPassword(req: Request, res: Response) {
   try {
-    const { email, phone, password } = req.body;
+    const { email, phone, password, displayName, age, bloodType, emergencyContact } = req.body;
     const identifier = email || phone;
 
     if (!identifier || !password) {
@@ -176,12 +220,13 @@ export async function createPassword(req: Request, res: Response) {
     const userData: Record<string, unknown> = {
       password: hashedPassword,
       uniqueId,
-      displayName: '',
+      displayName: displayName || '',
       medicalInfo: {
-        bloodType: '',
-        emergencyContact: '',
+        bloodType: bloodType || '',
+        emergencyContact: emergencyContact || '',
         allergies: '',
         medications: '',
+        age: age || '',
       },
       createdAt: new Date(),
       lastLoginAt: new Date(),
@@ -385,5 +430,54 @@ export async function getProfile(req: Request, res: Response) {
   } catch (err) {
     console.error('getProfile error:', err);
     res.status(500).json({ error: 'Failed to get profile' });
+  }
+}
+
+// =========================================================
+// PUT /api/auth/profile
+// =========================================================
+export async function updateProfile(req: Request, res: Response) {
+  try {
+    if (!req.user?.uid) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const { displayName, age, bloodType, emergencyContact, allergies, medications } = req.body;
+
+    const user = await User.findById(req.user.uid);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    if (displayName !== undefined) user.displayName = displayName;
+    if (!user.medicalInfo) {
+      user.medicalInfo = { bloodType: '', emergencyContact: '', allergies: '', medications: '', age: '' };
+    }
+    if (bloodType !== undefined) user.medicalInfo.bloodType = bloodType;
+    if (emergencyContact !== undefined) user.medicalInfo.emergencyContact = emergencyContact;
+    if (allergies !== undefined) user.medicalInfo.allergies = allergies;
+    if (medications !== undefined) user.medicalInfo.medications = medications;
+    if (age !== undefined) user.medicalInfo.age = age;
+
+    await user.save();
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: {
+        uid: user._id.toString(),
+        uniqueId: user.uniqueId,
+        email: user.email || '',
+        phone: user.phone || '',
+        displayName: user.displayName,
+        medicalInfo: user.medicalInfo,
+        createdAt: user.createdAt.getTime(),
+        lastLoginAt: user.lastLoginAt.getTime(),
+      },
+    });
+  } catch (err) {
+    console.error('updateProfile error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 }

@@ -135,24 +135,73 @@ function WelcomeView({ onGetStarted, onLogin }: { onGetStarted: () => void; onLo
 // Login View
 // =========================================================
 
+type LoginMethod = 'email' | 'phone';
+
 function LoginView() {
   const { login, isProcessing, setAuthStep } = useAuth();
-  const [identifier, setIdentifier] = useState('');
+  const [method, setMethod] = useState<LoginMethod>('email');
+  const [email, setEmail] = useState('');
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const countryPickerRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close country picker
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
+        setShowCountryPicker(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleCountrySelect = (cc: CountryCode) => {
+    setSelectedCountry(cc);
+    setShowCountryPicker(false);
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    setPhoneDigits(digits);
+  };
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
-    if (!identifier.trim() || !password) return;
+    setLocalError('');
+
+    let identifier = '';
+    if (method === 'email') {
+      if (!email.trim()) return;
+      if (!email.includes('@') || !email.includes('.')) {
+        setLocalError('Please enter a valid email address.');
+        return;
+      }
+      identifier = email.trim();
+    } else {
+      if (!phoneDigits.trim()) return;
+      const digits = phoneDigits.replace(/\D/g, '');
+      if (digits.length < 7) {
+        setLocalError('Please enter a complete phone number.');
+        return;
+      }
+      identifier = `${selectedCountry.code}${digits}`;
+    }
+
+    if (!password) return;
+
     try {
-      await login(identifier.trim(), password);
+      await login(identifier, password);
     } catch {
       // Error is handled in AuthContext
     }
-  }, [identifier, password, login]);
+  }, [method, email, phoneDigits, selectedCountry, password, login]);
 
-  const isEmail = identifier.includes('@');
-  const inputType = isEmail || !identifier ? 'email' : 'tel';
+  const filteredCodes = COUNTRY_CODES;
 
   return (
     <div style={styles.viewContainer}>
@@ -162,23 +211,94 @@ function LoginView() {
       <h2 style={styles.viewTitle}>Welcome Back</h2>
       <p style={styles.viewDescription}>Sign in to your account</p>
 
+      {/* Method toggle tabs */}
+      <div style={styles.toggleRow}>
+        <button
+          style={{
+            ...styles.toggleTab,
+            ...(method === 'email' ? styles.toggleTabActive : {}),
+          }}
+          onClick={() => setMethod('email')}
+        >
+          📧 Email
+        </button>
+        <button
+          style={{
+            ...styles.toggleTab,
+            ...(method === 'phone' ? styles.toggleTabActive : {}),
+          }}
+          onClick={() => setMethod('phone')}
+        >
+          📱 Phone
+        </button>
+      </div>
+
       <form onSubmit={handleSubmit} style={styles.form}>
-        <div style={styles.inputGroup}>
-          <label style={styles.inputLabel}>Email or Phone</label>
-          <input
-            style={styles.input}
-            type={inputType}
-            placeholder="your@email.com or phone number"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            autoComplete="username"
-            autoFocus
-            required
-          />
-          {!isEmail && identifier.length > 0 && identifier.length < 5 && (
-            <span style={styles.inputHint}>Enter your full phone number with country code (e.g. +1XXXXXXXXXX)</span>
-          )}
-        </div>
+        {method === 'email' ? (
+          <div style={styles.inputGroup}>
+            <label style={styles.inputLabel}>Email Address</label>
+            <input
+              style={styles.input}
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+              required
+            />
+          </div>
+        ) : (
+          <div style={styles.inputGroup}>
+            <label style={styles.inputLabel}>Phone Number</label>
+            <div style={styles.phoneWrapper}>
+              {/* Country Code Picker */}
+              <div ref={countryPickerRef} style={styles.countryPickerWrapper}>
+                <button
+                  type="button"
+                  style={styles.countryPickerBtn}
+                  onClick={() => setShowCountryPicker(!showCountryPicker)}
+                >
+                  <span style={styles.countryFlag}>{selectedCountry.flag}</span>
+                  <span style={styles.countryCodeText}>{selectedCountry.code}</span>
+                  <span style={styles.dropdownArrow}>{showCountryPicker ? '▲' : '▼'}</span>
+                </button>
+                {showCountryPicker && (
+                  <div style={styles.countryDropdown}>
+                    {filteredCodes.map((cc, i) => (
+                      <button
+                        key={`${cc.code}-${cc.name}-${i}`}
+                        type="button"
+                        style={{
+                          ...styles.countryOption,
+                          ...(selectedCountry.code === cc.code && selectedCountry.name === cc.name
+                            ? styles.countryOptionActive
+                            : {}),
+                        }}
+                        onClick={() => handleCountrySelect(cc)}
+                      >
+                        <span style={styles.countryFlag}>{cc.flag}</span>
+                        <span style={styles.countryName}>{cc.name}</span>
+                        <span style={styles.countryCodeOption}>{cc.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Phone number input */}
+              <input
+                style={styles.inputPhone}
+                type="tel"
+                placeholder="10-digit phone number"
+                value={phoneDigits}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                autoComplete="tel-national"
+                autoFocus
+                required
+              />
+            </div>
+          </div>
+        )}
 
         <div style={styles.inputGroup}>
           <label style={styles.inputLabel}>Password</label>
@@ -202,6 +322,8 @@ function LoginView() {
             </button>
           </div>
         </div>
+
+        {localError && <div style={styles.localError}>{localError}</div>}
 
         <button
           type="submit"
@@ -246,21 +368,25 @@ function RegisterView() {
   const [localError, setLocalError] = useState('');
   const countryPickerRef = useRef<HTMLDivElement>(null);
 
+  // Click outside to close country picker
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
+        setShowCountryPicker(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleCountrySelect = (cc: CountryCode) => {
     setSelectedCountry(cc);
     setShowCountryPicker(false);
   };
 
-  const formatPhone = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-  };
-
   const handlePhoneChange = (value: string) => {
     const digits = value.replace(/\D/g, '');
-    setPhoneDigits(formatPhone(digits));
+    setPhoneDigits(digits);
   };
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
@@ -385,7 +511,7 @@ function RegisterView() {
               <input
                 style={styles.inputPhone}
                 type="tel"
-                placeholder="(555) 000-0000"
+                placeholder="10-digit phone number"
                 value={phoneDigits}
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 autoComplete="tel-national"
@@ -431,11 +557,11 @@ function OTPVerifyView() {
   // If devOtp is available (email/SMS not configured), auto-fill it
   const [autoFilled, setAutoFilled] = useState(false);
   useEffect(() => {
-    if (tempData.devOtp && !autoFilled) {
+    if (tempData.devOtp && tempData.deliveryFailed && !autoFilled) {
       setOtp(tempData.devOtp.split(''));
       setAutoFilled(true);
     }
-  }, [tempData.devOtp, autoFilled]);
+  }, [tempData.devOtp, tempData.deliveryFailed, autoFilled]);
 
   const handleDigitChange = useCallback((index: number, value: string) => {
     if (value && !/^\d$/.test(value)) return;
@@ -499,6 +625,19 @@ function OTPVerifyView() {
         }
       </p>
 
+      {tempData.deliveryFailed && (
+        <div style={styles.demoWarningBanner}>
+          <span style={styles.warningIcon}>⚠️</span>
+          <div style={styles.warningTextContainer}>
+            <strong style={styles.warningTitle}>Delivery Failure</strong>
+            <span style={styles.warningMessage}>
+              We couldn't deliver the verification code to your real {isEmailReg ? 'email' : 'phone'} due to unconfigured/incorrect credentials ({tempData.deliveryError}). 
+              <strong> Falling back to Demo Mode:</strong> The code has been auto-filled for your convenience.
+            </span>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} style={styles.form}>
         <div style={styles.otpRow}>
           {otp.map((digit, i) => (
@@ -543,18 +682,71 @@ function OTPVerifyView() {
 // =========================================================
 
 function CreatePasswordView() {
-  const { createPassword, isProcessing, setAuthStep } = useAuth();
+  const { createPassword, isProcessing, setAuthStep, tempData } = useAuth();
+  const [displayName, setDisplayName] = useState('');
+  const [age, setAge] = useState('');
+  const [bloodType, setBloodType] = useState('A+');
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[3]); // Default to India (+91)
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const countryPickerRef = useRef<HTMLDivElement>(null);
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [localError, setLocalError] = useState('');
 
+  // Handle click outside country picker
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
+        setShowCountryPicker(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleCountrySelect = (cc: CountryCode) => {
+    setSelectedCountry(cc);
+    setShowCountryPicker(false);
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    setPhoneDigits(digits);
+  };
+
   const strength = getPasswordStrength(password);
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setLocalError('');
+
+    if (!displayName.trim()) {
+      setLocalError('Please enter your full name.');
+      return;
+    }
+
+    const ageNum = Number(age);
+    if (!age.trim() || isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      setLocalError('Please enter a valid age (1-120).');
+      return;
+    }
+
+    let finalPhone = tempData.phone || '';
+    if (!tempData.phone) {
+      if (!phoneDigits.trim()) {
+        setLocalError('Please enter your mobile number.');
+        return;
+      }
+      if (phoneDigits.length < 7) {
+        setLocalError('Please enter a complete phone number.');
+        return;
+      }
+      finalPhone = `${selectedCountry.code}${phoneDigits}`;
+    }
 
     if (password.length < 6) {
       setLocalError('Password must be at least 6 characters.');
@@ -566,11 +758,22 @@ function CreatePasswordView() {
     }
 
     try {
-      await createPassword(password);
+      await createPassword(
+        password,
+        {
+          displayName: displayName.trim(),
+          age: age.trim(),
+          bloodType,
+          emergencyContact: '',
+        },
+        !tempData.phone ? finalPhone : undefined
+      );
     } catch {
-      // Error handled in AuthContext
+      // Error is handled by AuthContext
     }
-  }, [password, confirmPassword, createPassword]);
+  }, [displayName, age, bloodType, phoneDigits, selectedCountry, password, confirmPassword, createPassword, tempData]);
+
+  const hasPhoneAlready = !!tempData.phone;
 
   return (
     <div style={styles.viewContainer}>
@@ -578,11 +781,142 @@ function CreatePasswordView() {
         ← Back
       </button>
 
-      <div style={styles.otpIcon}>🔐</div>
-      <h2 style={styles.viewTitle}>Create Password</h2>
-      <p style={styles.viewDescription}>Set a secure password for your account</p>
+      <div style={styles.otpIcon}>📋</div>
+      <h2 style={styles.viewTitle}>Complete Your Profile</h2>
+      <p style={styles.viewDescription}>Please provide your health and safety details to complete registration</p>
 
       <form onSubmit={handleSubmit} style={styles.form}>
+        {/* Section 1: Health & Profile details */}
+        <div style={{ ...styles.sectionDivider, marginTop: '4px' }}>
+          <span style={styles.sectionTitle}>📋 Personal & Medical Info</span>
+        </div>
+
+        <div style={styles.inputGroup}>
+          <label style={styles.inputLabel}>Full Name</label>
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="John Doe"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+            autoFocus
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ ...styles.inputGroup, flex: 1 }}>
+            <label style={styles.inputLabel}>Age</label>
+            <input
+              style={styles.input}
+              type="text"
+              inputMode="numeric"
+              placeholder="e.g. 25"
+              value={age}
+              onChange={(e) => setAge(e.target.value.replace(/\D/g, ''))}
+              required
+            />
+          </div>
+
+          <div style={{ ...styles.inputGroup, flex: 1.2 }}>
+            <label style={styles.inputLabel}>Blood Group</label>
+            <select
+              style={{
+                ...styles.input,
+                padding: '13px 16px',
+                appearance: 'none',
+                backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a0aec0%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 12px center',
+                backgroundSize: '16px',
+                paddingRight: '36px',
+                cursor: 'pointer',
+              }}
+              value={bloodType}
+              onChange={(e) => setBloodType(e.target.value)}
+            >
+              {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bt) => (
+                <option key={bt} value={bt} style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+                  {bt}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={styles.inputGroup}>
+          <label style={styles.inputLabel}>Mobile Number</label>
+          {hasPhoneAlready ? (
+            <div style={styles.verifiedPhoneContainer}>
+              <span style={styles.verifiedIcon}>✓ Verified</span>
+              <input
+                style={{
+                  ...styles.input,
+                  opacity: 0.8,
+                  background: 'rgba(16,185,129,0.06)',
+                  borderColor: 'rgba(16,185,129,0.2)',
+                  color: 'var(--text-primary)',
+                  fontWeight: '600',
+                  cursor: 'not-allowed',
+                }}
+                type="text"
+                value={tempData.phone}
+                disabled
+              />
+            </div>
+          ) : (
+            <div style={styles.phoneWrapper}>
+              {/* Country Code Picker */}
+              <div ref={countryPickerRef} style={styles.countryPickerWrapper}>
+                <button
+                  type="button"
+                  style={styles.countryPickerBtn}
+                  onClick={() => setShowCountryPicker(!showCountryPicker)}
+                >
+                  <span style={styles.countryFlag}>{selectedCountry.flag}</span>
+                  <span style={styles.countryCodeText}>{selectedCountry.code}</span>
+                  <span style={styles.dropdownArrow}>{showCountryPicker ? '▲' : '▼'}</span>
+                </button>
+                {showCountryPicker && (
+                  <div style={{ ...styles.countryDropdown, zIndex: 100 }}>
+                    {COUNTRY_CODES.map((cc, i) => (
+                      <button
+                        key={`${cc.code}-${cc.name}-${i}`}
+                        type="button"
+                        style={{
+                          ...styles.countryOption,
+                          ...(selectedCountry.code === cc.code && selectedCountry.name === cc.name
+                            ? styles.countryOptionActive
+                            : {}),
+                        }}
+                        onClick={() => handleCountrySelect(cc)}
+                      >
+                        <span style={styles.countryFlag}>{cc.flag}</span>
+                        <span style={styles.countryName}>{cc.name}</span>
+                        <span style={styles.countryCodeOption}>{cc.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Phone number input */}
+              <input
+                style={styles.inputPhone}
+                type="tel"
+                placeholder="10-digit phone number"
+                value={phoneDigits}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                required
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Security */}
+        <div style={{ ...styles.sectionDivider, marginTop: '12px' }}>
+          <span style={styles.sectionTitle}>🔐 Security Details</span>
+        </div>
+
         <div style={styles.inputGroup}>
           <label style={styles.inputLabel}>Password</label>
           <div style={styles.passwordWrapper}>
@@ -593,7 +927,6 @@ function CreatePasswordView() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
-              autoFocus
               required
             />
             <button
@@ -655,8 +988,9 @@ function CreatePasswordView() {
             ...styles.primaryBtn,
             ...(isProcessing ? styles.btnDisabled : {}),
             width: '100%',
+            marginTop: '12px',
           }}
-          disabled={isProcessing || !password || !confirmPassword}
+          disabled={isProcessing || !password || !confirmPassword || !displayName || !age}
         >
           {isProcessing ? 'Creating Account...' : 'Create Account'}
         </button>
@@ -1385,5 +1719,67 @@ const styles: Record<string, React.CSSProperties> = {
     caretColor: 'var(--action-alert)',
     boxSizing: 'border-box',
     MozAppearance: 'textfield',
+  },
+  demoWarningBanner: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '10px',
+    background: 'rgba(245,158,11,0.08)',
+    border: '1px solid rgba(245,158,11,0.25)',
+    borderRadius: '12px',
+    padding: '12px 14px',
+    marginBottom: '8px',
+    width: '100%',
+    boxSizing: 'border-box',
+    animation: 'fade-in 0.2s ease',
+  },
+  warningIcon: {
+    fontSize: '18px',
+    lineHeight: 1.2,
+  },
+  warningTextContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+  },
+  warningTitle: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+  },
+  warningMessage: {
+    fontSize: '12px',
+    color: 'var(--text-secondary)',
+    lineHeight: 1.4,
+  },
+  sectionDivider: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    margin: '16px 0 8px 0',
+  },
+  sectionTitle: {
+    fontSize: '12px',
+    fontWeight: '700',
+    color: 'var(--action-alert)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+  },
+  verifiedPhoneContainer: {
+    position: 'relative' as const,
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+  },
+  verifiedIcon: {
+    position: 'absolute' as const,
+    right: '12px',
+    fontSize: '11px',
+    fontWeight: '700',
+    color: '#10B981',
+    background: 'rgba(16,185,129,0.1)',
+    padding: '3px 8px',
+    borderRadius: '20px',
+    zIndex: 2,
   },
 };

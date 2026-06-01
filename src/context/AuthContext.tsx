@@ -28,7 +28,24 @@ interface AuthContextValue {
   login: (identifier: string, password: string) => Promise<void>;
   sendOtp: (email: string, phone: string) => Promise<void>;
   verifyOtp: (code: string) => Promise<boolean>;
-  createPassword: (password: string) => Promise<void>;
+  createPassword: (
+    password: string,
+    profileData?: {
+      displayName?: string;
+      age?: string;
+      bloodType?: string;
+      emergencyContact?: string;
+    },
+    overridePhone?: string
+  ) => Promise<void>;
+  updateProfile: (data: {
+    displayName?: string;
+    age?: string;
+    bloodType?: string;
+    emergencyContact?: string;
+    allergies?: string;
+    medications?: string;
+  }) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (email: string, token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -152,7 +169,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const data = await api.sendOtp(email, phone);
-      setTempData({ email, phone, devOtp: (data as any).devOtp });
+      setTempData({
+        email,
+        phone,
+        devOtp: (data as any).devOtp,
+        deliveryFailed: (data as any).deliveryFailed,
+        deliveryError: (data as any).deliveryError,
+      });
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already registered')) {
@@ -193,19 +216,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [tempData.email, tempData.phone]);
 
   // =========================================================
-  // Register — Step 3: Create password
+  // Register — Step 3: Create password & Profile
   // =========================================================
-  const createPasswordFn = useCallback(async (password: string) => {
+  const createPasswordFn = useCallback(async (
+    password: string,
+    profileData?: {
+      displayName?: string;
+      age?: string;
+      bloodType?: string;
+      emergencyContact?: string;
+    },
+    overridePhone?: string
+  ) => {
     setIsProcessing(true);
     setError(null);
     try {
       const { email, phone } = tempData;
-      if (!email && !phone) {
+      const finalPhone = overridePhone || phone;
+      if (!email && !finalPhone) {
         setError('Registration data not found. Please start again.');
         setIsProcessing(false);
         return;
       }
-      const { user: profile } = await api.createPassword(email, phone, password);
+      const { user: profile } = await api.createPassword(email, finalPhone, password, profileData);
       setUser(profile);
       setIsAuthenticated(true);
       setSuccessMessage(`Account created! Your unique ID: ${profile.uniqueId}`);
@@ -279,6 +312,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSuccessMessage(null);
   }, []);
 
+  // =========================================================
+  // Update Profile
+  // =========================================================
+  const updateProfile = useCallback(async (data: {
+    displayName?: string;
+    age?: string;
+    bloodType?: string;
+    emergencyContact?: string;
+    allergies?: string;
+    medications?: string;
+  }) => {
+    setIsProcessing(true);
+    setError(null);
+    try {
+      const { user: updatedProfile } = await api.updateProfile(data);
+      setUser(updatedProfile);
+      setSuccessMessage('Profile updated successfully!');
+    } catch (err: any) {
+      setError(err.message || 'Failed to update profile. Please try again.');
+      throw err;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
   const value: AuthContextValue = {
     user,
     loading,
@@ -291,6 +349,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sendOtp,
     verifyOtp,
     createPassword: createPasswordFn,
+    updateProfile,
     forgotPassword,
     resetPassword: resetPasswordFn,
     logout,

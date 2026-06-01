@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { DEFAULT_MEDICAL, SOS_MORSE } from '../types';
 import type { DispatchEntry } from '../types';
 import type { UserLocation } from '../hooks/useGeolocation';
+import { useAuth } from '../context/AuthContext';
 
 interface FailsafeUIProps {
   onCancel: () => void;
@@ -21,6 +22,7 @@ const STATUS_CONFIG = {
 } as const;
 
 export default function FailsafeUI({ onCancel, onExpire, userLocation, crashTriggered, dispatchEntries, isDispatched }: FailsafeUIProps) {
+  const { user } = useAuth();
   const INITIAL_COUNTDOWN = crashTriggered ? 3 : 10;
   const [countdown, setCountdown] = useState(INITIAL_COUNTDOWN);
   const [flashState, setFlashState] = useState<'red' | 'yellow'>('red');
@@ -242,6 +244,31 @@ export default function FailsafeUI({ onCancel, onExpire, userLocation, crashTrig
           {/* Medical info card below dispatch */}
           <MedicalInfoCard flashState={flashState} userLocation={userLocation} compact />
 
+          {/* Outgoing SOS Data Packet */}
+          <div style={styles.transmissionBox}>
+            <div style={styles.transmissionHeader}>📡 OUTGOING SOS DATA PACKET</div>
+            <pre style={styles.transmissionPre}>
+{`[EMERGENCY SOS ALERT]
+Time: ${new Date().toLocaleString()}
+GPS: ${userLocation ? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}` : 'Acquiring GPS...'}
+Link: ${userLocation ? `https://google.com/maps?q=${userLocation.lat},${userLocation.lng}` : 'Pending'}
+
+[PATIENT IDENTIFICATION]
+Name: ${user?.displayName || 'Not Provided'}
+Age: ${user?.medicalInfo?.age ? `${user.medicalInfo.age} Years` : 'Not Provided'}
+Phone: ${user?.phone || 'Not Provided'}
+
+[CRITICAL MEDICAL DATA]
+Blood Group: ${user?.medicalInfo?.bloodType || 'Not Provided'}
+Emergency Contact: ${user?.medicalInfo?.emergencyContact || 'Not Provided'}
+Allergies: ${user?.medicalInfo?.allergies || 'None reported'}
+Medications: ${user?.medicalInfo?.medications || 'None'}`}
+            </pre>
+            <div style={styles.transmissionFooter}>
+              Status: {allSent ? '✓ Packet transmitted to Hospital & Police' : '⚡ Broadcasting packet...'}
+            </div>
+          </div>
+
           {/* Cancel button — still available to abort */}
           <button
             style={styles.cancelButtonSmall}
@@ -262,6 +289,15 @@ function MedicalInfoCard({ flashState, userLocation, compact }: {
   userLocation: UserLocation | null;
   compact?: boolean;
 }) {
+  const { user } = useAuth();
+  
+  const displayName = user?.displayName || 'Not Provided';
+  const age = user?.medicalInfo?.age ? `${user.medicalInfo.age} Years` : 'Not Provided';
+  const bloodType = user?.medicalInfo?.bloodType || 'Not Provided';
+  const emergencyContact = user?.medicalInfo?.emergencyContact || 'Not Provided';
+  const allergies = user?.medicalInfo?.allergies || 'None reported';
+  const medications = user?.medicalInfo?.medications || 'None';
+
   return (
     <div style={{
       ...styles.medicalCard,
@@ -273,6 +309,17 @@ function MedicalInfoCard({ flashState, userLocation, compact }: {
         fontSize: compact ? '9px' : '10px',
         marginBottom: compact ? '4px' : '8px',
       }}>🆘 PARAMEDIC QUICK-READ</div>
+      
+      <div style={styles.medicalRow}>
+        <span style={styles.medicalLabel}>Patient Name</span>
+        <span style={{ ...styles.medicalValue, fontSize: compact ? '11px' : '13px' }}>{displayName}</span>
+      </div>
+      
+      <div style={styles.medicalRow}>
+        <span style={styles.medicalLabel}>Age</span>
+        <span style={{ ...styles.medicalValue, fontSize: compact ? '11px' : '13px' }}>{age}</span>
+      </div>
+
       {userLocation ? (
         <div style={styles.medicalRow}>
           <span style={styles.medicalLabel}>📍 Location</span>
@@ -306,19 +353,19 @@ function MedicalInfoCard({ flashState, userLocation, compact }: {
       )}
       <div style={styles.medicalRow}>
         <span style={styles.medicalLabel} className="responsive-medical-label">Blood Type</span>
-        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{DEFAULT_MEDICAL.bloodType}</span>
+        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px', color: '#F87171' }} className="responsive-medical-value">{bloodType}</span>
       </div>
       <div style={styles.medicalRow}>
         <span style={styles.medicalLabel} className="responsive-medical-label">Emergency Contact</span>
-        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{DEFAULT_MEDICAL.emergencyContact}</span>
+        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{emergencyContact}</span>
       </div>
       <div style={styles.medicalRow}>
         <span style={styles.medicalLabel} className="responsive-medical-label">Allergies</span>
-        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{DEFAULT_MEDICAL.allergies}</span>
+        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{allergies}</span>
       </div>
       <div style={styles.medicalRow}>
         <span style={styles.medicalLabel} className="responsive-medical-label">Medications</span>
-        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{DEFAULT_MEDICAL.medications}</span>
+        <span style={{ ...styles.medicalValue, fontSize: compact ? '13px' : '16px' }} className="responsive-medical-value">{medications}</span>
       </div>
     </div>
   );
@@ -563,5 +610,44 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     WebkitTapHighlightColor: 'transparent',
     transition: 'all 0.2s ease',
+  },
+  transmissionBox: {
+    background: 'rgba(0, 0, 0, 0.4)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '12px',
+    padding: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    boxSizing: 'border-box',
+    width: '100%',
+  },
+  transmissionHeader: {
+    fontSize: '10px',
+    fontWeight: '800',
+    color: '#FCD34D',
+    letterSpacing: '1.5px',
+    textTransform: 'uppercase',
+    textAlign: 'left',
+  },
+  transmissionPre: {
+    margin: 0,
+    padding: '10px',
+    background: '#090d16',
+    border: '1px solid rgba(255,255,255,0.05)',
+    borderRadius: '8px',
+    color: '#10B981',
+    fontSize: '11px',
+    fontFamily: 'monospace',
+    lineHeight: 1.4,
+    whiteSpace: 'pre-wrap',
+    textAlign: 'left',
+    overflowX: 'auto',
+  },
+  transmissionFooter: {
+    fontSize: '10px',
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'right',
   },
 };

@@ -42,7 +42,15 @@ async function request<T>(
     headers,
   });
 
-  const data = await res.json();
+  let data: any = {};
+  const text = await res.text();
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text };
+    }
+  }
 
   if (!res.ok) {
     throw new ApiError(res.status, data.error || 'Something went wrong');
@@ -103,7 +111,13 @@ export async function verifyOtp(email: string, phone: string, code: string): Pro
 export async function createPassword(
   email: string,
   phone: string,
-  password: string
+  password: string,
+  profileData?: {
+    displayName?: string;
+    age?: string;
+    bloodType?: string;
+    emergencyContact?: string;
+  }
 ): Promise<{ token: string; user: UserProfile }> {
   const tempToken = getTempToken();
   const headers: Record<string, string> = {};
@@ -111,9 +125,15 @@ export async function createPassword(
     headers['Authorization'] = `Bearer ${tempToken}`;
   }
 
-  const body: Record<string, string> = { password };
+  const body: Record<string, any> = { password };
   if (email) body.email = email;
   if (phone) body.phone = phone;
+  if (profileData) {
+    if (profileData.displayName !== undefined) body.displayName = profileData.displayName;
+    if (profileData.age !== undefined) body.age = profileData.age;
+    if (profileData.bloodType !== undefined) body.bloodType = profileData.bloodType;
+    if (profileData.emergencyContact !== undefined) body.emergencyContact = profileData.emergencyContact;
+  }
 
   const data = await request<{ token: string; user: UserProfile }>(
     '/auth/create-password',
@@ -163,6 +183,21 @@ export async function forgotPassword(email: string) {
 export async function getProfile(): Promise<UserProfile> {
   const data = await request<{ user: UserProfile }>('/auth/me');
   return data.user!;
+}
+
+export async function updateProfile(data: {
+  displayName?: string;
+  age?: string;
+  bloodType?: string;
+  emergencyContact?: string;
+  allergies?: string;
+  medications?: string;
+}): Promise<{ user: UserProfile }> {
+  const dataResponse = await request<{ user: UserProfile }>('/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return { user: dataResponse.user! };
 }
 
 export function logout() {

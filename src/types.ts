@@ -90,6 +90,8 @@ export interface TempRegistrationData {
   verificationId?: string;
   displayName?: string;
   devOtp?: string;
+  deliveryFailed?: boolean;
+  deliveryError?: string;
 }
 
 export interface UserProfile {
@@ -103,6 +105,7 @@ export interface UserProfile {
     emergencyContact: string;
     allergies: string;
     medications: string;
+    age: string;
   };
   createdAt: number;
   lastLoginAt: number;

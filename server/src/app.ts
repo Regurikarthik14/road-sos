@@ -11,6 +11,12 @@ const app = express();
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
 
+// Request logger middleware for debugging
+app.use((req, _res, next) => {
+  console.log(`\n📥 ${req.method} ${req.url} - body:`, JSON.stringify(req.body));
+  next();
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
