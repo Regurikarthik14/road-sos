@@ -253,7 +253,7 @@ Time: ${new Date().toLocaleString()}
 GPS: ${userLocation ? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}` : 'Acquiring GPS...'}
 Link: ${userLocation ? `https://google.com/maps?q=${userLocation.lat},${userLocation.lng}` : 'Pending'}
 
-[PATIENT IDENTIFICATION]
+[USER DETAILS]
 Name: ${user?.displayName || 'Not Provided'}
 Age: ${user?.medicalInfo?.age ? `${user.medicalInfo.age} Years` : 'Not Provided'}
 Phone: ${user?.phone || 'Not Provided'}
@@ -311,7 +311,7 @@ function MedicalInfoCard({ flashState, userLocation, compact }: {
       }}>🆘 PARAMEDIC QUICK-READ</div>
       
       <div style={styles.medicalRow}>
-        <span style={styles.medicalLabel}>Patient Name</span>
+        <span style={styles.medicalLabel}>User Name</span>
         <span style={{ ...styles.medicalValue, fontSize: compact ? '11px' : '13px' }}>{displayName}</span>
       </div>
       

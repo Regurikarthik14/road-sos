@@ -11,64 +11,80 @@ const NETWORK_STATES = {
 // Comprehensive smart response system
 const RESPONSE_MAP: Record<string, { response: string; speak?: boolean }> = {
   help: {
-    response: '🆘 Raksha Emergency Protocol active.\n\n• Your location is being tracked\n• Say "SOS" or "emergency" for immediate dispatch\n• Ask about: Trauma, Police, Towing, Puncture\n• Fire & hardware monitoring running',
+    response: '🆘 **Raksha Emergency Protocol active.**\n\n• Your location is being tracked.\n• Say "SOS" or "emergency" for immediate dispatch.\n• Ask about: Trauma, Police, Towing, Puncture.\n• Fire, crash & hardware monitoring running.\n• Adjust voice tuning or configure AI key in the top bar.',
     speak: true,
   },
   sos: {
-    response: '🚨 SOS signal received! Emergency dispatch initiated.\n\n• Alerting nearest trauma center (2.3 km)\n• Police notified (ETA 4 min)\n• Stay calm — help is on the way\n• Tap the SOS button now for full emergency mode',
+    response: '🚨 **SOS Emergency Dispatch initiated.**\n\n• Triggers a 10-second countdown with flashing screen (red/yellow at 500ms intervals).\n• Loops physical Vibration in SOS Morse pattern (...---...) via Vibration API.\n• Plays alternating sawtooth wave audio (880Hz / 660Hz) via Web Audio API.\n• Dispatches help with live location via a Google Maps link.\n• Displays Paramedic Quick-Read (Blood type O-, emergency contact "+1 (555) 000-0000").',
     speak: true,
   },
   emergency: {
-    response: '🚨 EMERGENCY MODE ACTIVATED\n\n• Dispatching to: City General Hospital (2.3 km)\n• Police notified\n• Paramedic en route\n• Share your live location? You are at the dashboard',
+    response: '🚨 **EMERGENCY MODE ACTIVE**\n\n• Triggers 10s countdown (3s if crash detected).\n• Alerts nearest trauma center (2.3 km) and notifies police.\n• Paramedics en route.\n• Displays blood type, emergency contacts, and live location.\n• Press SOS button on dashboard to start emergency mode.',
     speak: true,
   },
   trauma: {
-    response: '🏥 Trauma Centers nearby:\n\n• City General Hospital — 2.3 km (Open 24h)\n• St. Mary\'s ER — 4.1 km (Open 24h)\n• University Medical — 6.8 km (Open 24h)\n\nTap the Trauma chip on dashboard to view on map.',
+    response: '🏥 **Trauma Centers nearby (24/7):**\n\n• City General Hospital — 2.3 km (Open 24h)\n• St. Mary\'s ER — 4.1 km (Open 24h)\n• University Medical — 6.8 km (Open 24h)\n\n*Tap the Trauma chip on your dashboard to see routes and get driving directions via OSRM.*',
     speak: true,
   },
   police: {
-    response: '👮 Police stations near you:\n\n• Central Precinct — 1.3 km (Dispatch Active)\n• Highway Patrol — 2.4 km (En Route)\n\nDial 100 for immediate voice contact.',
+    response: '👮 **Police Stations nearby:**\n\n• Central Precinct — 1.3 km (Dispatch Active — 24/7)\n• Highway Patrol — 2.4 km (En Route — 24/7)\n\n*Dial 100 for immediate voice contact, or tap the Police chip on the dashboard to view them on the Leaflet map.*',
     speak: true,
   },
   towing: {
-    response: '🛻 Towing services en route:\n\n• Quick Tow — 0.9 km (Available)\n• Apex Towing — 3.0 km (Available)\n• City Wrecker — 2.9 km (On Call)\n\nFlatbed and lockout services available.',
+    response: '🛻 **Towing & Roadside Services:**\n\n• Quick Tow — 0.9 km (Available)\n• Apex Towing — 3.0 km (Available)\n• City Wrecker — 2.9 km (On Call)\n\n*Flatbed towing and lockout services are available. Tap the Towing chip to get directions.*',
     speak: true,
   },
   puncture: {
-    response: '🔧 Puncture repair shops near you:\n\n• Quick Tire — 1.8 km (Open Now)\n• AutoFix — 3.5 km (24 Hour)\n\nBoth offer mobile tire change service.',
+    response: '🔧 **Puncture Repair Shops:**\n\n• Quick Tire — 1.8 km (Open Now)\n• AutoFix Puncture — 1.8 km (24h Mobile)\n\n*Both offer mobile tire change services. Select Puncture chip to view routes on the map.*',
     speak: true,
   },
   fire: {
-    response: '🔥 Fire Safety:\n\n• Raksha monitors surrounding temperature in real-time\n• If temperature exceeds 50°C, fire alert triggers\n• Fire engine + ambulance auto-dispatched\n• Check the Temperature Monitor on dashboard',
+    response: '🔥 **Fire Detection System:**\n\n• Raksha tracks simulated cabin temperatures in real-time.\n• **Normal**: 25-35°C.\n• **Elevated**: 35-50°C (triggers a warning banner).\n• **Fire Alert**: >50°C — triggers dual-tone fire alarm, automatically dispatches fire engine and ambulance.',
     speak: true,
   },
   hardware: {
-    response: '⚙️ Hardware Monitoring:\n\n• CPU, Battery & Sensor health tracked\n• If critical damage detected → owner called\n• No response in 15s → auto-action initiated\n• Check Hardware Health panel on dashboard',
+    response: '⚙️ **Hardware Health Monitoring:**\n\n• Continuously monitors CPU load, Battery health, and Sensor diagnostic states.\n• **Owner Call Protocol**: Triggers a 15-second countdown on critical hardware failure to alert the owner.\n• **Autonomous Action**: Dispatches help automatically if owner fails to respond/cancel in 15 seconds.',
     speak: true,
   },
   raksha: {
-    response: '🛡️ Raksha means "protection" in Sanskrit.\n\nI\'m your emergency response assistant.\n• Emergency dispatch & crash detection\n• Temperature & fire monitoring\n• Hardware health surveillance\n• Voice-controlled interface\n\nHow can I help you today?',
+    response: '🛡️ **Raksha** (meaning "protection" in Sanskrit) is your real-time emergency response assistant.\n\nKey features:\n• **SOS Emergency Dispatch** with countdown, haptic Morse feedback, and alarm tone.\n• **Crash Detection** (sensor fusion of accelerometer > 20 m/s² and mic volume > 150).\n• **Fire Monitoring** (auto-alerts if temperature > 50°C).\n• **Hardware Diagnostics** (with 15s owner-call failsafe).\n• **Interactive Leaflet Map** (CartoDB dark-themed tiles and OSRM real-time driving routes).',
     speak: true,
   },
   location: {
-    response: '📍 Your current location is being tracked via GPS.\n\n• Live coordinates shared with emergency services\n• Accuracy typically within 10-20 meters outdoors\n• Check MapView on dashboard for detailed view',
+    response: '📍 **GPS Geolocation Tracking:**\n\n• Uses the HTML5 Geolocation API (`watchPosition`) to continuously track your position.\n• Options: `enableHighAccuracy: true`, `timeout: 8000`, `maximumAge: 10000`.\n• Coordinates are displayed live and shared via a Google Maps link during an SOS emergency.',
     speak: false,
   },
   voice: {
-    response: '🎤 Voice mode ready!\n\n• Tap the mic button and speak naturally\n• I\'ll respond verbally too\n• You can adjust voice pitch and rate in settings\n• Say "Help Raksha" to wake me up',
+    response: '🎤 **AI Voice Mode & Settings:**\n\n• Uses Web Speech API (SpeechRecognition for voice commands and SpeechSynthesis for Text-to-Speech responses).\n• Adjust the **Pitch** (0.5 to 2.0) and **Rate** (0.5 to 2.0) using the sliders in the voice settings panel in the top bar.',
     speak: true,
   },
   temperature: {
-    response: '🌡️ Temperature Monitor:\n\n• Current ambient temperature monitored in real-time\n• Normal range: 25-35°C\n• Elevated: 35-50°C — warning issued\n• Fire alert: >50°C — auto-dispatch fire + ambulance\n\nCheck dashboard for live reading.',
+    response: '🌡️ **Temperature Monitor:**\n\n• Real-time monitoring of simulated cabin temperatures.\n• **Normal Range**: 25°C to 35°C.\n• **Elevated Warning**: 35°C to 50°C.\n• **Fire Alert Threshold**: >50°C — triggers immediate emergency dispatch of fire engine and ambulance.',
     speak: true,
   },
   battery: {
-    response: '🔋 Battery status available on the Hardware Health panel.\n\n• Monitored in real-time\n• Low battery alerts trigger early warnings\n• Critical battery triggers owner call protocol',
+    response: '🔋 **Battery & CPU Health:**\n\n• Part of hardware diagnostics. Real-time battery status and CPU load are tracked.\n• Critical status initiates the Owner Call Protocol (15-second countdown) and triggers auto-action if no reply.',
     speak: false,
   },
   cancel: {
-    response: '✅ Emergency cancelled. Raksha remains on standby.\n\n• Monitoring active\n• Tap SOS anytime for immediate help\n• Say "help" for available commands',
+    response: '✅ **Emergency Canceled:**\n\n• Emergency has been aborted and Raksha is back on standby.\n• Closes alert AudioContext and halts Morse haptic pulses.\n• Monitoring systems (crash, fire, hardware) remain active in the background.',
     speak: true,
+  },
+  crash: {
+    response: '🚨 **Sensor Fusion Crash Detection:**\n\n• Combines accelerometer and microphone data to eliminate false positives.\n• **Accelerometer**: Detects impact using DeviceMotionEvent when accelerationIncludingGravity > 20 m/s² (~2g).\n• **Microphone**: Uses Web Audio API AnalyserNode (fftSize: 256) to detect loud noise > 150 average frequency.\n• **Co-trigger**: Both events must occur within a 2-second window.\n• **Action**: Automatically triggers failsafe with a 3-second countdown to dispatch emergency services.',
+    speak: true,
+  },
+  tech: {
+    response: '🛠️ **Raksha Technology Stack:**\n\n• **Frontend**: React 19.2.6 (using hooks, refs, and memoization), TypeScript 6.0.2, Vite 8.0.12.\n• **Styles**: Native CSS3 with custom variables, smooth transitions, and responsive scaling classes.\n• **Map**: Leaflet 1.9.4 with CartoDB dark tiles (`CartoDB.DarkMatter`).\n• **Routing**: Open Source Routing Machine (OSRM) driving route API.\n• **Sensors**: HTML5 Geolocation, Vibration API, Web Speech API (speech-to-text/text-to-speech), DeviceMotion API, and Web Audio API (AnalyserNode + oscillators).',
+    speak: false,
+  },
+  map: {
+    response: '🗺️ **Interactive Leaflet Map:**\n\n• Dark theme map rendered using CartoDB dark tiles (`CartoDB.DarkMatter`).\n• Tracks user position with an accuracy circle and re-centers automatically via **Auto-Follow Mode**.\n• Renders category pins (Trauma, Police, Towing, Puncture).\n• Fetches and draws category-colored dashed polylines for driving routes via **OSRM API**.',
+    speak: false,
+  },
+  route: {
+    response: '🛣️ **OSRM Route Navigation:**\n\n• Fetches real-time driving routes using the Open Source Routing Machine (OSRM) API.\n• API endpoint: `https://router.project-osrm.org/route/v1/driving/{lng},{lat};{lng},{lat}?overview=full&geometries=geojson`.\n• Displays route on the Leaflet map as a dashed, category-colored polyline with weight 4, plus start/end custom pin markers.',
+    speak: false,
   },
 };
 
@@ -96,12 +112,9 @@ function formatDateLabel(ts: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// Multiple fallback responses so users don't see the same message every time
 const FALLBACK_RESPONSES = [
-  'I\'m here to help with emergencies and road safety! Try saying:\n\n• "emergency" or "help" — for urgent assistance\n• "police" or "trauma" — nearby emergency services\n• "fire" or "temperature" — environmental monitoring\n• "towing" or "puncture" — roadside assistance\n• "where am I" or "location" — GPS tracking info',
-  'Need assistance? I can help with several things:\n\n🚨 **Emergency**: SOS, Police, Trauma centers\n🔧 **Roadside**: Towing, Puncture repair\n🌡️ **Monitoring**: Fire detection, Temperature\n💬 **Chat**: Just speak naturally!\n\nWhat would you like help with?',
-  'Hi there! I\'m Raksha, your emergency response assistant.\n\nSome things you can ask me:\n• "Find nearby police station"\n• "Show trauma centers"\n• "Call for towing"\n• "Check fire risk"\n• "Help! I\'m in an accident"\n\nHow can I assist you today?',
-  '🛡️ Raksha is here. Available services:\n\n📍 Live GPS tracking & emergency dispatch\n🔥 Real-time temperature & fire monitoring\n⚙️ Hardware health checks (CPU, battery, sensors)\n🚑 Crash detection with auto-SOS\n🎤 Voice-controlled interface\n\nJust tell me what you need!',
+  'I\'m here to help with all questions about the Raksha application! Try asking:\n\n• **"How does crash detection work?"**\n• **"Tell me about the tech stack"**\n• **"What is the SOS emergency dispatch system?"**\n• **"How does fire detection monitor temperature?"**\n• **"Explain the hardware health diagnostics"**\n• **"How does the Leaflet map and OSRM routing work?"**',
+  'Need assistance? I can provide accurate answers regarding every aspect of the app:\n\n🚨 **SOS Dispatch**: 10s countdown, dual-tone alarm, haptics, medical card\n🚑 **Crash Detection**: Accelerometer & mic sensor fusion (thresholds & co-trigger)\n🌡️ **Fire Alert**: Cabin temperature warning (35-50°C) and fire dispatch (>50°C)\n⚙️ **Hardware Diagnostic**: CPU, battery & sensor tracking, 15s owner-call protocol\n🛠️ **Tech Stack**: React 19, TS 6, Vite 8, Leaflet 1.9, OSRM API, Web Audio/Vibration\n\nAsk me any of the above!',
 ];
 
 interface ChatCanvasProps {
@@ -226,12 +239,50 @@ export default function ChatCanvas({ theme, onToggleTheme, onBack }: ChatCanvasP
 
     if (['bye', 'goodbye', 'see you', 'cya', 'take care', 'see ya'].some(w => lower.includes(w))) {
       return {
-        response: '👋 Stay safe! Raksha will be here whenever you need me.\n\n• SOS button always available for emergencies\n• Monitoring active in the background\n• Take care and drive safe! 🛡️',
+        response: '👋 Stay safe! Raksha will be here whenever you need me.\n\n• SOS button always available for emergencies\n• Background safety monitors active\n• Take care and drive safe! 🛡️',
         speak: true,
       };
     }
 
-    // Check all registered keywords in RESPONSE_MAP
+    // === EXPANDED SMART KEYWORD MATCHING ===
+    // 1. Tech Stack
+    if (['tech', 'stack', 'framework', 'version', 'react', 'typescript', 'vite', 'css', 'build', 'eslint', 'architect'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.tech;
+    }
+    // 2. Crash Detection
+    if (['crash', 'sensor', 'accelerometer', 'microphone', 'threshold', 'co-trigger', 'impact', '2g', 'g-force', 'loud'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.crash;
+    }
+    // 3. Map tiles/leaflet
+    if (['map', 'tiles', 'leaflet', 'cartodb', 'crosshair', 'auto-follow', 'view'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.map;
+    }
+    // 4. OSRM routing/directions
+    if (['route', 'routing', 'direction', 'osrm', 'navigation', 'path', 'distance', 'duration'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.route;
+    }
+    // 5. Fire & Temperature
+    if (['fire', 'temperature', 'heat', 'degree', 'celsius', 'warning', 'elevated', '50'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.fire;
+    }
+    // 6. Hardware diagnostics
+    if (['hardware', 'cpu', 'battery', 'diagnostic', 'owner call', 'failsafe', '15s', 'autonomous'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.hardware;
+    }
+    // 7. SOS button / vibration / haptics / audio alarm
+    if (['sos', 'button', 'countdown', 'morse', 'vibrate', 'haptic', 'sound', 'alarm', 'sawtooth', 'hz', 'shimmer', 'paramedic'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.sos;
+    }
+    // 8. Geolocation
+    if (['location', 'gps', 'coordinate', 'maps link', 'watchposition', 'track'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.location;
+    }
+    // 9. Voice mode / Settings
+    if (['voice', 'speech', 'mic', 'talk', 'pitch', 'rate', 'tts', 'slider'].some(w => lower.includes(w))) {
+      return RESPONSE_MAP.voice;
+    }
+
+    // Check all registered keywords in RESPONSE_MAP (fallback search)
     for (const [keyword, data] of Object.entries(RESPONSE_MAP)) {
       if (lower.includes(keyword)) {
         return data;
@@ -266,9 +317,9 @@ export default function ChatCanvas({ theme, onToggleTheme, onBack }: ChatCanvasP
     }
 
     // === ABOUT / CAPABILITIES ===
-    if (['about', 'capabilities', 'features', 'what can you', 'what do you', 'can you', 'function'].some(w => lower.includes(w))) {
+    if (['about', 'capabilities', 'features', 'what can you', 'what do you', 'can you', 'function', 'how does'].some(w => lower.includes(w))) {
       return {
-        response: '🛡️ **Raksha — Complete Feature Overview**\n\n✅ **Emergency Dispatch** — Police, Trauma, Towing, Puncture\n✅ **Crash Detection** — Auto-detects impacts and sends SOS\n✅ **Fire Monitoring** — Real-time temperature tracking\n✅ **Hardware Health** — CPU, Battery, Sensor monitoring\n✅ **Voice Control** — Speak naturally with voice mode\n✅ **GPS Tracking** — Real-time location sharing\n✅ **Auto-SOS** — 10-second countdown on fall detection\n✅ **Dark/Light Mode** — Choose your theme\n\nAll of this works together to keep you safe. What would you like to try?',
+        response: '🛡️ **Raksha — Complete Feature Overview**\n\n✅ **Emergency SOS Dispatch** — Circular button, 10s countdown, red/yellow flash, alternating dual-tone sawtooth alarm (880Hz/660Hz), haptic Vibration SOS Morse pattern (...---...).\n✅ **Crash Detection (Sensor Fusion)** — Accelerometer impact (>20 m/s²) + microphone loudness (>150 average frequency) co-triggered within 2s, auto-failsafe with a 3s countdown.\n✅ **Fire Monitoring** — Cabin temperature tracking with 35-50°C warning and >50°C fire dispatch.\n✅ **Hardware Health Diagnostics** — Continuous monitoring of CPU load, battery, and sensors with 15s owner-call failsafe.\n✅ **Interactive Map** — CartoDB dark maps (`CartoDB.DarkMatter`), accuracy circle, auto-follow re-centering, proximity markers, and OSRM driving routes.\n✅ **AI Chat & Voice** — Gemini-powered AI online, rules-based offline, SpeechRecognition commands, and Pitch/Rate TTS controllers.\n\n*What would you like to know more about? You can ask details about any feature!*',
         speak: true,
       };
     }
